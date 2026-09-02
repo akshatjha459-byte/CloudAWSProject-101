@@ -13,13 +13,13 @@ This file is the project's implementation state and handoff record.
 
 ## Overall Status
 
-**Current module:** Module 4
+**Current module:** Module 5
 
-**Overall phase:** Module 3 complete — ready to begin Module 4
+**Overall phase:** Module 4 complete — ready to begin Module 5
 
-**Last verified module:** Module 3
+**Last verified module:** Module 4
 
-**Next action:** Implement and verify Module 4: Amazon S3 Storage.
+**Next action:** Implement and verify Module 5: Amazon RDS Database.
 
 ## Module Status
 
@@ -28,7 +28,7 @@ This file is the project's implementation state and handoff record.
 | M1 | Local File System / Organization Server | COMPLETE | YES | Portable local directory established; watcher belongs to M2. |
 | M2 | Synchronization Agent | COMPLETE | YES | Filesystem watching and local sync logic. |
 | M3 | FastAPI Backend / EC2 | COMPLETE | YES | FastAPI API layer, adapters, HttpEventSender. |
-| M4 | Amazon S3 Storage | NOT STARTED | — | Cloud file content and S3 versioning. |
+| M4 | Amazon S3 Storage | COMPLETE | YES | S3 FileStorage adapter with versioning-aware delete. |
 | M5 | Amazon RDS Database | NOT STARTED | — | Metadata, versions, and sync logs. |
 | M6 | AWS IAM / Security | NOT STARTED | — | Permissions, roles, and least privilege. |
 | M7 | Bidirectional Synchronization | NOT STARTED | — | Cloud-to-local synchronization. |
@@ -37,6 +37,87 @@ This file is the project's implementation state and handoff record.
 | M10 | Frontend Dashboard | NOT STARTED | — | Dashboard consuming backend APIs. |
 
 ## Module Handoffs
+
+### Module 4 — Amazon S3 Storage
+
+**Status:** COMPLETE
+
+**Responsibility:** Store file content in Amazon S3 via the existing M3 `FileStorage` interface. Enable and use S3 Versioning.
+
+**Does NOT own:** REST API redesign, RDS, IAM, EC2 provisioning, CloudWatch/CloudTrail/SNS, dashboard, conflict resolution.
+
+---
+
+#### Implementation
+
+Implemented and verified on 2026-09-03.
+
+**What was implemented:**
+- `S3FileStorage` implementing `put` / `get` / `delete` / `copy` / `exists`.
+- Object keys mapped as `{S3_PREFIX}/{relative_path}` (default prefix `organization/files`).
+- Overwrite uses `put_object` so S3 Versioning records a new version.
+- Delete uses `delete_object` without `VersionId` (delete marker; history retained).
+- `STORAGE_ADAPTER=s3` selects S3; default remains `memory` so M3 tests need no AWS.
+- `python -m backend.s3_setup` enables versioning on an existing bucket.
+- Unit tests use a fake S3 client. Real-AWS tests are opt-in and skipped by default.
+
+**Implementation notes:**
+- boto3 uses the default credential chain. No keys in source or `.env.example`.
+- FileStorage interface was not changed.
+- Metadata remains `MemoryMetadataRepository` until M5.
+
+---
+
+#### Verification
+
+**Tests / validation performed:**
+
+```
+python -m pytest modules/module-04/tests/test_m4.py modules/module-04/tests/test_m4_integration.py modules/module-03/tests/test_m3.py modules/module-02/tests/test_m2.py -v
+python modules/module-01/validate_m1.py
+```
+
+**Actual results:**
+- pytest: **92 passed, 1 skipped** (M4 integration opt-in), 1 Starlette/httpx deprecation warning, 5.74s
+- Breakdown: M4 unit tests passed; M3 32 passed; M2 34 passed; integration skipped (`RUN_S3_INTEGRATION` not set)
+- M1 `validate_m1.py`: **PASS** (exit code 0)
+
+**Verification result: PASS**
+
+---
+
+#### Files created/modified
+
+| Action | File |
+|---|---|
+| CREATED | `backend/adapters/s3_storage.py` |
+| CREATED | `backend/s3_setup.py` |
+| CREATED | `modules/module-04/tests/test_m4.py` |
+| CREATED | `modules/module-04/tests/test_m4_integration.py` |
+| MODIFIED | `modules/module-04/README.md` |
+| MODIFIED | `backend/config.py` |
+| MODIFIED | `backend/main.py` |
+| MODIFIED | `backend/services/sync_service.py` |
+| MODIFIED | `backend/requirements.txt` |
+| MODIFIED | `.env.example` |
+| MODIFIED | `docs/PROGRESS.md` |
+
+**Not modified:** `docs/Architecture.md`, `docs/module-contracts.md`, `backend/adapters/storage.py` interface, M2 event/watcher behavior.
+
+---
+
+#### Known limitations
+
+- Default `STORAGE_ADAPTER` is still `memory` until an operator sets `s3`.
+- Bucket must be created in AWS Console (or equivalent); setup only enables versioning.
+- REST `/files/{id}/versions` still reads the metadata adapter, not S3 version listings (M5/M8).
+- No IAM policy artifacts (M6).
+
+---
+
+#### Next
+
+M4 is complete. Begin Module 5: Amazon RDS Database.
 
 ### Module 3 — FastAPI Backend / EC2
 
@@ -281,6 +362,13 @@ Module 2 will:
 ---
 
 ## Change Log
+
+### 2026-09-03 (Part 4)
+
+- Implemented and verified Module 4: Amazon S3 Storage.
+- Added `S3FileStorage`, versioning helper, fake-S3 unit tests, and opt-in integration tests.
+- pytest: 92 passed, 1 skipped. M1 validate: PASS.
+- M4 marked COMPLETE. Next module: M5 — Amazon RDS Database.
 
 ### 2026-09-03 (Part 3)
 

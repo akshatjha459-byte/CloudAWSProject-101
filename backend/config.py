@@ -2,8 +2,8 @@
 config.py — Module 3: Backend configuration.
 
 Reads settings from environment variables and an optional project-root .env
-file.  No AWS credentials are loaded here.  S3/RDS settings belong to later
-modules and are not consumed by M3.
+file.  AWS credentials are never loaded here; boto3 uses the default chain
+when STORAGE_ADAPTER=s3.  RDS settings belong to Module 5.
 """
 
 from __future__ import annotations
@@ -48,6 +48,13 @@ BACKEND_PORT: int = int(_env("BACKEND_PORT", "8000") or "8000")
 LOG_LEVEL: str = _env("LOG_LEVEL", "INFO").upper()
 
 # Identifier used in /status so operators can see which storage adapter is live.
-# M3 ships with the in-memory adapter; M4 will replace it with S3.
+# Default remains "memory" so M3 tests and local development need no AWS.
+# Set STORAGE_ADAPTER=s3 to use Module 4 Amazon S3 storage.
 STORAGE_ADAPTER: str = _env("STORAGE_ADAPTER", "memory")
 METADATA_ADAPTER: str = _env("METADATA_ADAPTER", "memory")
+
+# Module 4 — Amazon S3 (file content only).  Credentials come from the
+# default AWS chain (env vars, shared config, or EC2 instance role).
+AWS_REGION: str = _env("AWS_REGION")
+S3_BUCKET: str = _env("S3_BUCKET")
+S3_PREFIX: str = _env("S3_PREFIX", "organization/files")

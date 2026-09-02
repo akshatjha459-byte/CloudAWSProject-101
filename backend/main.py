@@ -17,10 +17,29 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from backend.adapters.repository import MemoryMetadataRepository
-from backend.adapters.storage import MemoryFileStorage
-from backend.config import METADATA_ADAPTER, STORAGE_ADAPTER
+from backend.adapters.storage import FileStorage, MemoryFileStorage
+from backend.config import (
+    AWS_REGION,
+    METADATA_ADAPTER,
+    S3_BUCKET,
+    S3_PREFIX,
+    STORAGE_ADAPTER,
+)
 from backend.routes.api import router
 from backend.services.sync_service import SyncService
+
+
+def build_file_storage(adapter_name: str) -> tuple[FileStorage, str]:
+    """Select the file-content adapter.  Default is still in-memory (M3)."""
+    name = (adapter_name or "memory").strip().lower()
+    if name == "s3":
+        from backend.adapters.s3_storage import S3FileStorage
+
+        return (
+            S3FileStorage(bucket=S3_BUCKET, region=AWS_REGION, prefix=S3_PREFIX),
+            "s3",
+        )
+    return MemoryFileStorage(), "memory"
 
 
 def create_app(
@@ -30,14 +49,16 @@ def create_app(
     storage_adapter_name: str | None = None,
     metadata_adapter_name: str | None = None,
 ) -> FastAPI:
-    """Application factory so tests can inject fresh in-memory adapters."""
+    """Application factory so tests can inject adapters."""
 
-    storage = storage or MemoryFileStorage()
+    adapter_name = storage_adapter_name or STORAGE_ADAPTER
+    if storage is None:
+        storage, adapter_name = build_file_storage(adapter_name)
     repository = repository or MemoryMetadataRepository()
     service = SyncService(
         storage,
         repository,
-        storage_adapter_name=storage_adapter_name or STORAGE_ADAPTER,
+        storage_adapter_name=adapter_name,
         metadata_adapter_name=metadata_adapter_name or METADATA_ADAPTER,
     )
 

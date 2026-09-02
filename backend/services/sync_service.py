@@ -323,8 +323,12 @@ class SyncService:
             change_count=len(changes),
             last_operation_at=last,
             notes={
-                "s3": "not implemented (M4)",
+                "s3": "active" if self._storage_adapter_name == "s3" else "not selected",
                 "rds": "not implemented (M5)",
-                "storage": "in-memory development adapter" if self._storage_adapter_name == "memory" else self._storage_adapter_name,
+                "storage": (
+                    "amazon s3"
+                    if self._storage_adapter_name == "s3"
+                    else "in-memory development adapter"
+                ),
             },
         )
