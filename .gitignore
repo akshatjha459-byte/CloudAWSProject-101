@@ -1,0 +1,36 @@
+# ============================================================
+# .gitignore — CloudAWSProject-101
+# ============================================================
+
+# Environment / secrets — NEVER commit real credentials
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Synchronization agent local state (Module 2+)
+.sync_state.json
+
+# IDE and OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
