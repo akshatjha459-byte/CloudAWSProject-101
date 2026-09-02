@@ -324,10 +324,15 @@ class SyncService:
             last_operation_at=last,
             notes={
                 "s3": "active" if self._storage_adapter_name == "s3" else "not selected",
-                "rds": "not implemented (M5)",
+                "rds": "active" if self._metadata_adapter_name == "rds" else "not selected",
                 "storage": (
                     "amazon s3"
                     if self._storage_adapter_name == "s3"
+                    else "in-memory development adapter"
+                ),
+                "metadata": (
+                    "amazon rds"
+                    if self._metadata_adapter_name == "rds"
                     else "in-memory development adapter"
                 ),
             },

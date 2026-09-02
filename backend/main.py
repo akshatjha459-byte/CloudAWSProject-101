@@ -16,11 +16,17 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from backend.adapters.repository import MemoryMetadataRepository
+from backend.adapters.repository import MemoryMetadataRepository, MetadataRepository
 from backend.adapters.storage import FileStorage, MemoryFileStorage
 from backend.config import (
     AWS_REGION,
     METADATA_ADAPTER,
+    RDS_DATABASE,
+    RDS_HOST,
+    RDS_PASSWORD,
+    RDS_PORT,
+    RDS_SSLMODE,
+    RDS_USERNAME,
     S3_BUCKET,
     S3_PREFIX,
     STORAGE_ADAPTER,
@@ -42,6 +48,26 @@ def build_file_storage(adapter_name: str) -> tuple[FileStorage, str]:
     return MemoryFileStorage(), "memory"
 
 
+def build_metadata_repository(adapter_name: str) -> tuple[MetadataRepository, str]:
+    """Select the metadata adapter.  Default is still in-memory (M3)."""
+    name = (adapter_name or "memory").strip().lower()
+    if name == "rds":
+        from backend.adapters.rds_repository import RdsMetadataRepository
+
+        return (
+            RdsMetadataRepository.from_env(
+                host=RDS_HOST,
+                port=RDS_PORT,
+                database=RDS_DATABASE,
+                username=RDS_USERNAME,
+                password=RDS_PASSWORD,
+                sslmode=RDS_SSLMODE,
+            ),
+            "rds",
+        )
+    return MemoryMetadataRepository(), "memory"
+
+
 def create_app(
     *,
     storage=None,
@@ -54,12 +80,16 @@ def create_app(
     adapter_name = storage_adapter_name or STORAGE_ADAPTER
     if storage is None:
         storage, adapter_name = build_file_storage(adapter_name)
-    repository = repository or MemoryMetadataRepository()
+
+    meta_name = metadata_adapter_name or METADATA_ADAPTER
+    if repository is None:
+        repository, meta_name = build_metadata_repository(meta_name)
+
     service = SyncService(
         storage,
         repository,
         storage_adapter_name=adapter_name,
-        metadata_adapter_name=metadata_adapter_name or METADATA_ADAPTER,
+        metadata_adapter_name=meta_name,
     )
 
     app = FastAPI(

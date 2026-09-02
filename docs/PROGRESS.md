@@ -13,13 +13,13 @@ This file is the project's implementation state and handoff record.
 
 ## Overall Status
 
-**Current module:** Module 5
+**Current module:** Module 6
 
-**Overall phase:** Module 4 complete — ready to begin Module 5
+**Overall phase:** Module 5 complete — ready to begin Module 6
 
-**Last verified module:** Module 4
+**Last verified module:** Module 5
 
-**Next action:** Implement and verify Module 5: Amazon RDS Database.
+**Next action:** Implement and verify Module 6: AWS IAM / Security.
 
 ## Module Status
 
@@ -29,7 +29,7 @@ This file is the project's implementation state and handoff record.
 | M2 | Synchronization Agent | COMPLETE | YES | Filesystem watching and local sync logic. |
 | M3 | FastAPI Backend / EC2 | COMPLETE | YES | FastAPI API layer, adapters, HttpEventSender. |
 | M4 | Amazon S3 Storage | COMPLETE | YES | S3 FileStorage adapter with versioning-aware delete. |
-| M5 | Amazon RDS Database | NOT STARTED | — | Metadata, versions, and sync logs. |
+| M5 | Amazon RDS Database | COMPLETE | YES | SQLAlchemy RDS metadata repository (files/versions/logs/changes). |
 | M6 | AWS IAM / Security | NOT STARTED | — | Permissions, roles, and least privilege. |
 | M7 | Bidirectional Synchronization | NOT STARTED | — | Cloud-to-local synchronization. |
 | M8 | Versioning & Conflict Handling | NOT STARTED | — | Version tracking and conflict handling. |
@@ -37,6 +37,88 @@ This file is the project's implementation state and handoff record.
 | M10 | Frontend Dashboard | NOT STARTED | — | Dashboard consuming backend APIs. |
 
 ## Module Handoffs
+
+### Module 5 — Amazon RDS Database
+
+**Status:** COMPLETE
+
+**Responsibility:** Persist file metadata, application version history, sync logs, and the change feed in Amazon RDS PostgreSQL via the existing M3 `MetadataRepository` interface.
+
+**Does NOT own:** File content (S3/M4), IAM, EC2 provisioning, CloudWatch/CloudTrail/SNS, bidirectional apply, conflict resolution, dashboard, authentication.
+
+---
+
+#### Implementation
+
+Implemented and verified on 2026-09-03.
+
+**What was implemented:**
+- SQLAlchemy models: `files`, `file_versions`, `sync_logs`, `sync_changes`.
+- `RdsMetadataRepository` implementing every `MetadataRepository` method.
+- `METADATA_ADAPTER=rds` selects RDS; default remains `memory`.
+- Schema init via SQLAlchemy `create_all` (`python -m backend.rds_setup`) and `database/schema.sql`.
+- Unit tests on isolated SQLite; opt-in real-RDS tests skipped by default.
+
+**Implementation notes:**
+- No file bytes in RDS.
+- Application `version_number` is separate from S3 `VersionId` (both stored).
+- Mutating operations commit in a single SQLAlchemy session/transaction.
+
+---
+
+#### Verification
+
+**Tests / validation performed:**
+
+```
+python -m pytest modules/module-05/tests/test_m5.py modules/module-05/tests/test_m5_integration.py modules/module-04/tests/test_m4.py modules/module-03/tests/test_m3.py modules/module-02/tests/test_m2.py -v
+python modules/module-01/validate_m1.py
+```
+
+**Actual results:**
+- pytest: **109 passed, 1 skipped** (M5 RDS integration opt-in), 1 Starlette/httpx deprecation warning, 7.27s
+- M5 unit tests passed; M4/M3/M2 unit tests passed
+- M1 `validate_m1.py`: **PASS** (exit code 0)
+
+**Verification result: PASS**
+
+---
+
+#### Files created/modified
+
+| Action | File |
+|---|---|
+| CREATED | `backend/adapters/rds_models.py` |
+| CREATED | `backend/adapters/rds_repository.py` |
+| CREATED | `backend/rds_setup.py` |
+| CREATED | `database/schema.sql` |
+| CREATED | `modules/module-05/tests/test_m5.py` |
+| CREATED | `modules/module-05/tests/test_m5_integration.py` |
+| MODIFIED | `modules/module-05/README.md` |
+| MODIFIED | `database/README.md` |
+| MODIFIED | `backend/config.py` |
+| MODIFIED | `backend/main.py` |
+| MODIFIED | `backend/services/sync_service.py` |
+| MODIFIED | `backend/requirements.txt` |
+| MODIFIED | `.env.example` |
+| MODIFIED | `docs/PROGRESS.md` |
+
+**Not modified:** `docs/Architecture.md`, `docs/module-contracts.md`, `MetadataRepository` ABC, REST routes, M4 S3 adapter.
+
+---
+
+#### Known limitations
+
+- The RDS instance itself is created in AWS Console, not by this repo.
+- Unit tests use SQLite as a SQLAlchemy stand-in; production dialect is PostgreSQL.
+- Default `METADATA_ADAPTER` remains `memory` until an operator sets `rds`.
+- IAM/network hardening for RDS is Module 6.
+
+---
+
+#### Next
+
+M5 is complete. Begin Module 6: AWS IAM / Security.
 
 ### Module 4 — Amazon S3 Storage
 
@@ -362,6 +444,13 @@ Module 2 will:
 ---
 
 ## Change Log
+
+### 2026-09-03 (Part 5)
+
+- Implemented and verified Module 5: Amazon RDS Database.
+- Added `RdsMetadataRepository`, SQLAlchemy schema, SQLite unit tests, and opt-in RDS integration tests.
+- pytest: 109 passed, 1 skipped. M1 validate: PASS.
+- M5 marked COMPLETE. Next module: M6 — AWS IAM / Security.
 
 ### 2026-09-03 (Part 4)
 

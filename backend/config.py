@@ -3,7 +3,7 @@ config.py — Module 3: Backend configuration.
 
 Reads settings from environment variables and an optional project-root .env
 file.  AWS credentials are never loaded here; boto3 uses the default chain
-when STORAGE_ADAPTER=s3.  RDS settings belong to Module 5.
+when STORAGE_ADAPTER=s3.  RDS passwords come only from the environment.
 """
 
 from __future__ import annotations
@@ -50,6 +50,7 @@ LOG_LEVEL: str = _env("LOG_LEVEL", "INFO").upper()
 # Identifier used in /status so operators can see which storage adapter is live.
 # Default remains "memory" so M3 tests and local development need no AWS.
 # Set STORAGE_ADAPTER=s3 to use Module 4 Amazon S3 storage.
+# Set METADATA_ADAPTER=rds to use Module 5 Amazon RDS metadata.
 STORAGE_ADAPTER: str = _env("STORAGE_ADAPTER", "memory")
 METADATA_ADAPTER: str = _env("METADATA_ADAPTER", "memory")
 
@@ -58,3 +59,11 @@ METADATA_ADAPTER: str = _env("METADATA_ADAPTER", "memory")
 AWS_REGION: str = _env("AWS_REGION")
 S3_BUCKET: str = _env("S3_BUCKET")
 S3_PREFIX: str = _env("S3_PREFIX", "organization/files")
+
+# Module 5 — Amazon RDS PostgreSQL (metadata only; never file bytes).
+RDS_HOST: str = _env("RDS_HOST")
+RDS_PORT: str = _env("RDS_PORT", "5432")
+RDS_DATABASE: str = _env("RDS_DATABASE")
+RDS_USERNAME: str = _env("RDS_USERNAME")
+RDS_PASSWORD: str = _env("RDS_PASSWORD")
+RDS_SSLMODE: str = _env("RDS_SSLMODE", "require")
