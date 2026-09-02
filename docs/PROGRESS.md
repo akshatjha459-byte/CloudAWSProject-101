@@ -13,13 +13,13 @@ This file is the project's implementation state and handoff record.
 
 ## Overall Status
 
-**Current module:** Module 3
+**Current module:** Module 4
 
-**Overall phase:** Module 2 complete — ready to begin Module 3
+**Overall phase:** Module 3 complete — ready to begin Module 4
 
-**Last verified module:** Module 2
+**Last verified module:** Module 3
 
-**Next action:** Implement and verify Module 3: FastAPI Backend / EC2.
+**Next action:** Implement and verify Module 4: Amazon S3 Storage.
 
 ## Module Status
 
@@ -27,7 +27,7 @@ This file is the project's implementation state and handoff record.
 |---|---|---|---|---|
 | M1 | Local File System / Organization Server | COMPLETE | YES | Portable local directory established; watcher belongs to M2. |
 | M2 | Synchronization Agent | COMPLETE | YES | Filesystem watching and local sync logic. |
-| M3 | FastAPI Backend / EC2 | NOT STARTED | — | API layer and backend orchestration. |
+| M3 | FastAPI Backend / EC2 | COMPLETE | YES | FastAPI API layer, adapters, HttpEventSender. |
 | M4 | Amazon S3 Storage | NOT STARTED | — | Cloud file content and S3 versioning. |
 | M5 | Amazon RDS Database | NOT STARTED | — | Metadata, versions, and sync logs. |
 | M6 | AWS IAM / Security | NOT STARTED | — | Permissions, roles, and least privilege. |
@@ -37,6 +37,102 @@ This file is the project's implementation state and handoff record.
 | M10 | Frontend Dashboard | NOT STARTED | — | Dashboard consuming backend APIs. |
 
 ## Module Handoffs
+
+### Module 3 — FastAPI Backend / EC2
+
+**Status:** COMPLETE
+
+**Responsibility:** REST API, request validation, backend service layer, storage/metadata abstractions, and `HttpEventSender` for M2.
+
+**Does NOT own:** S3 implementation, S3 versioning configuration, RDS schema/implementation, IAM, EC2 provisioning, CloudWatch, CloudTrail, SNS, dashboard, or conflict resolution.
+
+---
+
+#### Implementation
+
+Implemented and verified on 2026-09-03.
+
+**What was implemented:**
+- FastAPI application with the contract endpoints: `/health`, `/sync/upload`, `/sync/delete`, `/sync/changes`, `/files`, `/files/{id}/versions`, `/logs`, `/status`.
+- `FileStorage` + `MemoryFileStorage` so M4 can later provide S3 without changing routes.
+- `MetadataRepository` + `MemoryMetadataRepository` so M5 can later provide RDS without changing routes.
+- Service-layer validation (operation, path, hash/size vs content) and API error responses (400/404/422/500).
+- `HttpEventSender` implementing M2's `EventSender`, reading `BACKEND_URL` from configuration/environment.
+- Agent uses `HttpEventSender` when `BACKEND_URL` is set; otherwise `LoggingEventSender`.
+- M3 pytest suite covering the API, sender, HTTP errors, env config, and M2 event compatibility.
+
+**Implementation notes:**
+- No S3, RDS, boto3, or AWS credentials.
+- No Docker.
+- In-memory adapters are development-only; process restart loses state.
+
+---
+
+#### Verification
+
+**Tests / validation performed:**
+
+```
+python -m pytest modules/module-03/tests/test_m3.py modules/module-02/tests/test_m2.py -v
+python modules/module-01/validate_m1.py
+```
+
+**Actual results:**
+- M3 + M2 pytest: **66 passed** (32 M3 + 34 M2), 1 unrelated Starlette/httpx deprecation warning, 5.56s
+- M1 `validate_m1.py`: **PASS** (exit code 0)
+
+**Verification result: PASS**
+
+---
+
+#### Files created/modified
+
+| Action | File |
+|---|---|
+| CREATED | `backend/__init__.py` |
+| CREATED | `backend/main.py` |
+| CREATED | `backend/config.py` |
+| CREATED | `backend/models.py` |
+| CREATED | `backend/requirements.txt` |
+| CREATED | `backend/adapters/__init__.py` |
+| CREATED | `backend/adapters/storage.py` |
+| CREATED | `backend/adapters/repository.py` |
+| CREATED | `backend/services/__init__.py` |
+| CREATED | `backend/services/sync_service.py` |
+| CREATED | `backend/routes/__init__.py` |
+| CREATED | `backend/routes/api.py` |
+| CREATED | `agent/http_sender.py` |
+| CREATED | `modules/module-03/tests/test_m3.py` |
+| MODIFIED | `modules/module-03/README.md` |
+| MODIFIED | `agent/config.py` |
+| MODIFIED | `agent/agent.py` |
+| MODIFIED | `agent/sender.py` |
+| MODIFIED | `.env.example` |
+| MODIFIED | `.gitignore` |
+| MODIFIED | `modules/module-02/README.md` |
+| MODIFIED | `docs/PROGRESS.md` |
+
+**Not modified:** `docs/Architecture.md`, `docs/module-contracts.md`.
+
+---
+
+#### Known limitations (because M4/M5 are not implemented)
+
+- File content is stored in process memory, not S3.
+- Metadata, versions, and logs are stored in process memory, not RDS.
+- Restarting the backend clears all stored state.
+- No IAM/auth (M6). No EC2 provisioning. No CloudWatch/SNS/CloudTrail (M9).
+
+---
+
+#### Next
+
+M3 is complete. Begin Module 4: Amazon S3 Storage.
+
+Module 4 will:
+- Implement the S3 `FileStorage` adapter.
+- Enable S3 Versioning as specified by architecture.
+- Leave M3 routes and M5 RDS out of scope except for adapter wiring.
 
 ### Module 2 — Synchronization Agent
 
@@ -185,6 +281,13 @@ Module 2 will:
 ---
 
 ## Change Log
+
+### 2026-09-03 (Part 3)
+
+- Implemented and verified Module 3: FastAPI Backend / EC2.
+- Added `backend/` FastAPI app, in-memory storage/metadata adapters, and `agent/http_sender.py`.
+- Pytest: 66 passed (`test_m3.py` + `test_m2.py`). M1 validate script: PASS.
+- M3 marked COMPLETE. Next module: M4 — Amazon S3 Storage.
 
 ### 2026-09-03 (Part 2)
 

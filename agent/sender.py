@@ -4,15 +4,12 @@ sender.py — Module 2: Abstract event sender interface.
 Defines the interface that the agent uses to dispatch ``SyncEvent`` objects
 to an upstream consumer (Module 3 — FastAPI backend).
 
-M3 is not implemented yet.  This module provides:
-  - ``EventSender``: the abstract base class that M3 will satisfy.
-  - ``LoggingEventSender``: a concrete implementation used during M2
-    development and testing that simply logs events rather than sending them
-    over the network.
+This module provides:
+  - ``EventSender``: the abstract base class used by the watcher.
+  - ``LoggingEventSender``: a development stub that logs events.
 
-When M3 is implemented it will supply its own ``EventSender`` subclass
-(e.g. ``HttpEventSender``).  The watcher and agent are coded against the
-abstract interface and require no changes when M3 is added.
+The HTTP implementation lives in ``agent.http_sender.HttpEventSender`` (M3).
+The watcher is coded against the abstract interface.
 """
 
 from __future__ import annotations

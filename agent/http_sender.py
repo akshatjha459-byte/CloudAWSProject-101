@@ -1,0 +1,188 @@
+"""
+http_sender.py — Module 3: HTTP EventSender for the M2 agent.
+
+Posts normalised ``SyncEvent`` objects to the Module 3 FastAPI backend.
+
+    CREATED / MODIFIED → POST {BACKEND_URL}/sync/upload  (multipart)
+    DELETED            → POST {BACKEND_URL}/sync/delete  (JSON)
+    MOVED              → POST {BACKEND_URL}/sync/upload  (multipart, dest_path)
+
+The backend origin is supplied by configuration (``BACKEND_URL``), not
+hardcoded.  This module contains no AWS credentials.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import uuid
+from pathlib import Path
+from typing import Callable, Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+from agent.events import OP_CREATED, OP_DELETED, OP_MODIFIED, OP_MOVED, SyncEvent
+from agent.sender import EventSender
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_TIMEOUT_SECONDS = 30
+
+HttpPostFn = Callable[[str, dict[str, str], bytes, float], tuple[int, bytes]]
+
+
+def default_http_post(
+    url: str,
+    headers: dict[str, str],
+    body: bytes,
+    timeout: float,
+) -> tuple[int, bytes]:
+    """Perform an HTTP POST using the standard library."""
+    request = Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return int(response.status), response.read()
+    except HTTPError as exc:
+        payload = exc.read() if exc.fp is not None else b""
+        return int(exc.code), payload
+
+
+def _multipart(
+    fields: dict[str, Optional[str]],
+    file_bytes: Optional[bytes],
+    filename: str,
+) -> tuple[bytes, str]:
+    boundary = uuid.uuid4().hex
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        if value is None:
+            continue
+        parts.append(f"--{boundary}".encode("utf-8"))
+        parts.append(f'Content-Disposition: form-data; name="{name}"'.encode("utf-8"))
+        parts.append(b"")
+        parts.append(str(value).encode("utf-8"))
+    if file_bytes is not None:
+        parts.append(f"--{boundary}".encode("utf-8"))
+        disposition = (
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"'
+        )
+        parts.append(disposition.encode("utf-8"))
+        parts.append(b"Content-Type: application/octet-stream")
+        parts.append(b"")
+        parts.append(file_bytes)
+    parts.append(f"--{boundary}--".encode("utf-8"))
+    parts.append(b"")
+    body = b"\r\n".join(parts)
+    content_type = f"multipart/form-data; boundary={boundary}"
+    return body, content_type
+
+
+class HttpEventSender(EventSender):
+    """Concrete ``EventSender`` that delivers events to the M3 REST API."""
+
+    def __init__(
+        self,
+        backend_url: str,
+        sync_folder: str,
+        *,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        http_post: Optional[HttpPostFn] = None,
+    ) -> None:
+        url = (backend_url or "").strip().rstrip("/")
+        if not url:
+            raise ValueError(
+                "BACKEND_URL is required for HttpEventSender. "
+                "Set it to the deployed backend origin (not a hardcoded address)."
+            )
+        self.backend_url = url
+        self.sync_folder = sync_folder
+        self.timeout = timeout
+        self._http_post = http_post or default_http_post
+        self.last_status: Optional[int] = None
+        self.last_error: Optional[str] = None
+
+    def send(self, event: SyncEvent) -> None:
+        """Dispatch *event*.  HTTP failures are recorded and logged, not raised."""
+        self.last_status = None
+        self.last_error = None
+        try:
+            if event.operation == OP_DELETED:
+                status, body = self._send_delete(event)
+            else:
+                status, body = self._send_upload(event)
+            self.last_status = status
+            if status >= 400:
+                snippet = body.decode("utf-8", errors="replace")[:500]
+                self.last_error = f"HTTP {status}: {snippet}"
+                logger.error(
+                    "Backend rejected %s for %s: %s",
+                    event.operation,
+                    event.path,
+                    self.last_error,
+                )
+            else:
+                logger.info(
+                    "Backend accepted %s for %s (HTTP %s)",
+                    event.operation,
+                    event.path,
+                    status,
+                )
+        except URLError as exc:
+            self.last_error = str(exc.reason if getattr(exc, "reason", None) else exc)
+            logger.error("Network error sending %s for %s: %s", event.operation, event.path, self.last_error)
+        except OSError as exc:
+            self.last_error = str(exc)
+            logger.error("I/O error sending %s for %s: %s", event.operation, event.path, self.last_error)
+        except Exception as exc:  # pylint: disable=broad-except
+            self.last_error = str(exc)
+            logger.error("Unexpected sender error for %s: %s", event.operation, exc)
+
+    def _send_delete(self, event: SyncEvent) -> tuple[int, bytes]:
+        payload = event.to_dict()
+        body = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        return self._http_post(
+            f"{self.backend_url}/sync/delete",
+            headers,
+            body,
+            self.timeout,
+        )
+
+    def _send_upload(self, event: SyncEvent) -> tuple[int, bytes]:
+        fields: dict[str, Optional[str]] = {
+            "operation": event.operation,
+            "path": event.path,
+            "timestamp": event.timestamp,
+            "hash": event.hash,
+            "size": None if event.size is None else str(event.size),
+            "dest_path": event.dest_path,
+        }
+        file_bytes: Optional[bytes] = None
+        filename = os.path.basename(event.path) or "file"
+        if event.operation in (OP_CREATED, OP_MODIFIED):
+            file_bytes = self._read_local_file(event.path)
+            if file_bytes is None:
+                raise FileNotFoundError(
+                    f"Cannot upload {event.path}: local file not found under SYNC_FOLDER"
+                )
+            filename = os.path.basename(event.path) or filename
+        elif event.operation == OP_MOVED and event.dest_path:
+            file_bytes = self._read_local_file(event.dest_path)
+            filename = os.path.basename(event.dest_path) or filename
+
+        body, content_type = _multipart(fields, file_bytes, filename)
+        headers = {"Content-Type": content_type, "Accept": "application/json"}
+        return self._http_post(
+            f"{self.backend_url}/sync/upload",
+            headers,
+            body,
+            self.timeout,
+        )
+
+    def _read_local_file(self, relative_path: str) -> Optional[bytes]:
+        local = Path(self.sync_folder) / relative_path.replace("/", os.sep)
+        if not local.is_file():
+            logger.warning("Local file missing for upload: %s", local)
+            return None
+        return local.read_bytes()

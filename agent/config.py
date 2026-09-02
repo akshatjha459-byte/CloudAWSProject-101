@@ -5,8 +5,9 @@ Reads agent configuration from environment variables and/or a .env file.
 Uses only Python standard library — no third-party dependencies.
 
 Resolved values (all public):
-    SYNC_FOLDER : str   — absolute path to the watched directory
-    LOG_LEVEL   : str   — logging level (default: INFO)
+    SYNC_FOLDER  : str   — absolute path to the watched directory
+    LOG_LEVEL    : str   — logging level (default: INFO)
+    BACKEND_URL  : str   — Module 3 backend origin (empty if not configured)
 """
 
 import logging
@@ -68,6 +69,7 @@ def _resolve_sync_folder() -> str:
 
 SYNC_FOLDER: str = _resolve_sync_folder()
 LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO").upper()
+BACKEND_URL: str = os.environ.get("BACKEND_URL", "").strip()
 
 # ---------------------------------------------------------------------------
 # Logging (configured once on import)

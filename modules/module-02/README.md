@@ -75,11 +75,12 @@ of the host OS.
 
 ## Configuration
 
-`SYNC_FOLDER` is the only required variable.  All others have defaults.
+`SYNC_FOLDER` is required.  `BACKEND_URL` is optional until M3 is used.
 
 ```
 SYNC_FOLDER=./organization/files   # relative to project root
 LOG_LEVEL=INFO                     # optional; default INFO
+BACKEND_URL=                       # M3 origin; empty → LoggingEventSender
 ```
 
 Copy `.env.example` to `.env` and set values before running.
@@ -111,22 +112,11 @@ No AWS credentials, no M3 server, and no network access are required.
 
 ## M2 → M3 interface
 
-When M3 is implemented it must provide a concrete `EventSender` subclass
-(e.g. `HttpEventSender`) that POSTs events to the backend.
+When `BACKEND_URL` is set, `agent.py` uses `HttpEventSender` from
+`agent/http_sender.py` (Module 3).  When it is empty, `LoggingEventSender`
+is used so the agent can still run without a backend.
 
-To integrate M3, replace:
-
-```python
-sender = LoggingEventSender()
-```
-
-in `agent/agent.py` with:
-
-```python
-sender = HttpEventSender(backend_url=BACKEND_URL)
-```
-
-No changes to `watcher.py` or `events.py` are needed.
+No changes to `watcher.py` or `events.py` are required.
 
 ## Dependency
 
@@ -139,10 +129,8 @@ the Python standard library plus `pytest` (dev dependency only).
 
 ## Known limitations (M2 scope)
 
-- Events are dispatched to `LoggingEventSender` (logged, not sent over HTTP)
-  until M3 is implemented.
-- No retry / queue logic — that belongs to M2/M3 together and will be added
-  once the HTTP sender exists.
+- If `BACKEND_URL` is unset, events go to `LoggingEventSender` (logged, not HTTP).
+- No durable retry / queue — HTTP failures are logged by `HttpEventSender`.
 - `MOVED` events within `SYNC_FOLDER` are supported.  Cross-device moves
   (to a path outside `SYNC_FOLDER`) are treated as `DELETED` + `CREATED` by
   watchdog.

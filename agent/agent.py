@@ -4,10 +4,9 @@ agent.py — Module 2: Synchronisation agent entry point.
 Starts the filesystem watcher on SYNC_FOLDER and runs until interrupted
 (Ctrl-C or SIGTERM).
 
-In this M2 implementation the agent uses ``LoggingEventSender`` — events are
-logged to stdout rather than sent to a real M3 backend.  When M3 is
-implemented, replace ``LoggingEventSender`` with the HTTP sender without
-modifying this file or watcher.py.
+If ``BACKEND_URL`` is set, events are sent with ``HttpEventSender``.
+Otherwise the agent falls back to ``LoggingEventSender`` so M2 can still
+run without a backend.
 
 Usage:
     python -m agent.agent
@@ -22,7 +21,8 @@ import signal
 import sys
 import time
 
-from agent.config import SYNC_FOLDER
+from agent.config import BACKEND_URL, SYNC_FOLDER
+from agent.http_sender import HttpEventSender
 from agent.sender import LoggingEventSender
 from agent.watcher import SyncWatcher
 
@@ -37,11 +37,16 @@ def _handle_signal(signum: int, frame) -> None:  # noqa: ANN001
 def main() -> int:
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    logger.info("=== Synchronisation Agent (Module 2) starting ===")
+    logger.info("=== Synchronisation Agent starting ===")
     logger.info("Watching: %s", SYNC_FOLDER)
-    logger.info("Sender: LoggingEventSender (M3 not yet implemented)")
 
-    sender = LoggingEventSender()
+    if BACKEND_URL:
+        logger.info("Sender: HttpEventSender -> %s", BACKEND_URL)
+        sender = HttpEventSender(backend_url=BACKEND_URL, sync_folder=SYNC_FOLDER)
+    else:
+        logger.info("Sender: LoggingEventSender (BACKEND_URL not set)")
+        sender = LoggingEventSender()
+
     watcher = SyncWatcher(sync_folder=SYNC_FOLDER, sender=sender)
 
     try:
