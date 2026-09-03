@@ -15,11 +15,11 @@ Update progress only after verification. Do not redesign architecture or silentl
 
 **Current module:** M6 — AWS IAM / Security
 
-**Overall phase:** M6 code complete; real AWS deployment and verification pending.
+**Overall phase:** M6 code complete; real AWS deployment and verification in progress.
 
-**Last verified module:** M6 code/security implementation
+**Last verified:** M6 code/security implementation + AWS infrastructure provisioning through EC2 IAM-role attachment
 
-**Next action:** Complete the M6 AWS deployment/verification gate. Do **not** start M7 until that gate passes.
+**Next action:** Deploy/configure the backend on EC2 and complete the remaining M6 AWS verification gate. Do **not** start M7 until that gate passes.
 
 ## Canonical Module Sequence
 
@@ -50,23 +50,35 @@ Update progress only after verification. Do not redesign architecture or silentl
 - `.env.example` and `.gitignore` prevent committed runtime secrets.
 - M6 regression suite: **113 passed**, with one Starlette/httpx deprecation warning.
 
-### AWS verification pending
+### AWS infrastructure provisioned
 
-The following must be completed against the real AWS account:
+- [x] S3 bucket created in `ap-south-1` (Mumbai).
+- [x] S3 Versioning enabled.
+- [x] S3 Block Public Access enabled.
+- [x] S3 default encryption enabled (SSE-S3).
+- [x] Least-privilege IAM policy `CloudAWSProject-S3-Access` created for the actual project bucket.
+- [x] EC2 IAM role `CloudAWSProject-EC2-Role` created with EC2 trust policy.
+- [x] EC2 security group `CloudAWSProject-EC2-SG` created with SSH from My IP and TCP 8000 access.
+- [x] RDS security group `CloudAWSProject-RDS-SG` created with PostgreSQL 5432 restricted to the EC2 security group.
+- [x] PostgreSQL RDS instance created with Public access disabled and `CloudAWSProject-RDS-SG` selected.
+- [x] EC2 `t3.micro` instance launched with Amazon Linux 2023, public IP enabled, `CloudAWSProject-EC2-SG` selected, and no extra file system.
+- [x] `CloudAWSProject-S3-Access` attached to `CloudAWSProject-EC2-Role`.
+- [x] `CloudAWSProject-EC2-Role` attached to the running EC2 instance.
 
-- [ ] S3 bucket created and Versioning enabled.
-- [ ] Least-privilege IAM policy created with the actual bucket ARN.
-- [ ] EC2 IAM role/instance profile created and attached.
-- [ ] EC2 security group configured with only required ports.
-- [ ] PostgreSQL RDS created in the same VPC as EC2.
-- [ ] RDS Public access disabled.
-- [ ] RDS inbound TCP 5432 restricted to the EC2 security group.
-- [ ] EC2 successfully accesses S3 through its IAM role.
-- [ ] EC2 successfully connects to RDS.
-- [ ] Agent reaches EC2 using the application API key.
-- [ ] Missing/wrong API key returns HTTP 401.
-- [ ] Correct API key succeeds.
-- [ ] A real local file completes Agent -> EC2 -> S3/RDS.
+### AWS verification still pending
+
+The following must be completed against the real AWS deployment:
+
+- [ ] Confirm EC2 can use its IAM role to access the actual S3 bucket.
+- [ ] Configure/deploy the FastAPI backend on EC2.
+- [ ] Configure EC2-to-RDS connectivity using the actual RDS endpoint/database credentials.
+- [ ] Configure production backend environment variables without committing secrets.
+- [ ] Configure the local Sync Agent with the EC2 backend URL and application API key.
+- [ ] Confirm Agent reaches EC2 using the application API key.
+- [ ] Confirm missing/wrong API key returns HTTP 401.
+- [ ] Confirm correct API key succeeds.
+- [ ] Run a real local file test completing Agent -> EC2 -> S3/RDS.
+- [ ] Verify the deployed M6 security/network requirements end-to-end.
 
 Do not mark these checks complete from documentation or local tests alone.
 
@@ -122,7 +134,7 @@ Will expose system state through the M3 REST API. The dashboard must not connect
 
 ## Verification History
 
-- **2026-09-03 — M6:** 113 tests passed; code/security verification PASS. AWS deployment pending.
+- **2026-09-03 — M6:** 113 tests passed; code/security verification PASS. AWS infrastructure provisioned through EC2 IAM-role attachment; deployment/end-to-end verification pending.
 - **2026-09-03 — M5:** 109 passed, 1 skipped; M1 validation PASS.
 - **2026-09-03 — M4:** 92 passed, 1 skipped; M1 validation PASS.
 - **2026-09-03 — M3/M2:** 66 passed; M1 validation PASS.
