@@ -100,3 +100,113 @@ def test_poller_skips_if_hash_matches(tmp_path):
     
     # Content should not be overwritten
     assert local_file.read_bytes() == b"local content"
+
+def test_poller_stops_batch_on_failure_and_retries(tmp_path):
+    sender = MockSender()
+    sender.changes = [
+        {"operation": "CREATED", "path": "A.txt", "file_hash": "hashA", "file_id": 1, "timestamp": "2026-09-04T00:00:01Z"},
+        {"operation": "CREATED", "path": "B.txt", "file_hash": "hashB", "file_id": 2, "timestamp": "2026-09-04T00:00:02Z"},
+        {"operation": "CREATED", "path": "C.txt", "file_hash": "hashC", "file_id": 3, "timestamp": "2026-09-04T00:00:03Z"},
+    ]
+    sender.downloads[1] = b"A"
+    sender.downloads[3] = b"C"
+    
+    poller = CloudPoller(sender, str(tmp_path), interval=1)
+    poller._poll()
+    
+    assert (tmp_path / "A.txt").exists()
+    assert not (tmp_path / "B.txt").exists()
+    assert not (tmp_path / "C.txt").exists()
+    assert poller.state.get_last_sync_timestamp() == "2026-09-04T00:00:01Z"
+    
+    sender.downloads[2] = b"B"
+    sender.changes = [c for c in sender.changes if c["timestamp"] > poller.state.get_last_sync_timestamp()]
+    
+    poller._poll()
+    
+    assert (tmp_path / "B.txt").exists()
+    assert (tmp_path / "C.txt").exists()
+    assert poller.state.get_last_sync_timestamp() == "2026-09-04T00:00:03Z"
+
+def test_identical_timestamps_failure(tmp_path):
+    sender = MockSender()
+    sender.changes = [
+        {"operation": "CREATED", "path": "A.txt", "file_hash": "hashA", "file_id": 1, "timestamp": "2026-09-04T00:00:01Z"},
+        {"operation": "CREATED", "path": "B.txt", "file_hash": "hashB", "file_id": 2, "timestamp": "2026-09-04T00:00:01Z"},
+    ]
+    sender.downloads[1] = b"A"
+    
+    poller = CloudPoller(sender, str(tmp_path), interval=1)
+    poller._poll()
+    
+    assert (tmp_path / "A.txt").exists()
+    assert poller.state.get_last_sync_timestamp() is None
+    
+    sender.downloads[2] = b"B"
+    poller._poll()
+    
+    assert (tmp_path / "B.txt").exists()
+    assert poller.state.get_last_sync_timestamp() == "2026-09-04T00:00:01Z"
+
+def test_move_operation_idempotency_and_failure(tmp_path):
+    sender = MockSender()
+    sender.changes = [
+        {"operation": "MOVED", "path": "A.txt", "dest_path": "B.txt", "file_hash": "hash", "file_id": 1, "timestamp": "2026-09-04T00:00:01Z"}
+    ]
+    (tmp_path / "A.txt").write_bytes(b"content")
+    
+    poller = CloudPoller(sender, str(tmp_path), interval=1)
+    poller._poll()
+    
+    assert not (tmp_path / "A.txt").exists()
+    assert (tmp_path / "B.txt").exists()
+    
+    poller._poll()
+    assert (tmp_path / "B.txt").exists()
+    
+def test_deleted_operation_idempotency(tmp_path):
+    sender = MockSender()
+    sender.changes = [
+        {"operation": "DELETED", "path": "A.txt", "timestamp": "2026-09-04T00:00:01Z"}
+    ]
+    poller = CloudPoller(sender, str(tmp_path), interval=1)
+    poller._poll()
+    assert poller.state.get_last_sync_timestamp() == "2026-09-04T00:00:01Z"
+    
+def test_move_overwrite_incorrect_dest(tmp_path):
+    sender = MockSender()
+    sender.changes = [
+        {"operation": "MOVED", "path": "A.txt", "dest_path": "B.txt", "file_hash": "expected_hash", "file_id": 1, "timestamp": "2026-09-04T00:00:01Z"}
+    ]
+    
+    (tmp_path / "A.txt").write_bytes(b"correct content")
+    from agent.hashing import sha256_file
+    expected = sha256_file(str(tmp_path / "A.txt"))
+    sender.changes[0]["file_hash"] = expected
+    
+    (tmp_path / "B.txt").write_bytes(b"wrong content")
+    
+    poller = CloudPoller(sender, str(tmp_path), interval=1)
+    poller._poll()
+    
+    assert not (tmp_path / "A.txt").exists()
+    assert (tmp_path / "B.txt").read_bytes() == b"correct content"
+
+def test_agent_restart_after_partial_processing(tmp_path):
+    sender = MockSender()
+    sender.changes = [
+        {"operation": "CREATED", "path": "A.txt", "file_hash": "hashA", "file_id": 1, "timestamp": "2026-09-04T00:00:01Z"},
+    ]
+    sender.downloads[1] = b"A"
+    
+    # Simulate a crash right after write by modifying the file but not the state
+    (tmp_path / "A.txt").write_bytes(b"A")
+    # State has no knowledge of A.txt or timestamp
+    
+    poller = CloudPoller(sender, str(tmp_path), interval=1)
+    poller._poll()
+    
+    # It should re-download and succeed, and update state
+    assert (tmp_path / "A.txt").read_bytes() == b"A"
+    assert poller.state.get_last_sync_timestamp() == "2026-09-04T00:00:01Z"
+    assert poller.state.get_file_hash("A.txt") == "hashA"

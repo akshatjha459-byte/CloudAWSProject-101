@@ -44,78 +44,125 @@ class CloudPoller:
         if not changes:
             return
 
-        latest_timestamp = since
-        for change in changes:
-            # Check if this change is newer
-            ts = change.get("timestamp")
-            if not latest_timestamp or ts > latest_timestamp:
-                latest_timestamp = ts
+        # Sort changes by timestamp (and id if present) to process in deterministic order
+        changes.sort(key=lambda c: (c.get("timestamp"), c.get("id", 0)))
 
-            operation = change.get("operation")
-            path = change.get("path")
-            file_hash = change.get("file_hash")
-            file_id = change.get("file_id")
+        # Group by timestamp so we only advance checkpoint when an entire timestamp's changes succeed
+        groups = {}
+        for c in changes:
+            ts = c.get("timestamp")
+            if ts not in groups:
+                groups[ts] = []
+            groups[ts].append(c)
 
-            if not path or not operation:
-                continue
+        sorted_timestamps = sorted(groups.keys())
 
-            local_path = Path(self.sync_folder) / path.replace("/", os.sep)
+        for ts in sorted_timestamps:
+            group_success = True
+            for change in groups[ts]:
+                try:
+                    if not self._process_change(change):
+                        group_success = False
+                        break
+                except Exception as exc:
+                    logger.error("Unexpected error processing change: %s", exc)
+                    group_success = False
+                    break
             
-            if operation == "DELETED":
-                if local_path.exists():
-                    logger.info("Cloud deleted %s, deleting locally.", path)
-                    try:
-                        local_path.unlink()
-                        self.state.update_file_state(path, None, deleted=True)
-                    except Exception as exc:
-                        logger.error("Error deleting local file %s: %s", path, exc)
+            if group_success:
+                self.state.set_last_sync_timestamp(ts)
+            else:
+                logger.warning("Stopping poll batch due to failure at timestamp %s", ts)
+                break
+
+    def _process_change(self, change: dict) -> bool:
+        operation = change.get("operation")
+        path = change.get("path")
+        file_hash = change.get("file_hash")
+        file_id = change.get("file_id")
+
+        if not path or not operation:
+            return True
+
+        local_path = Path(self.sync_folder) / path.replace("/", os.sep)
+        
+        if operation == "DELETED":
+            if local_path.exists():
+                logger.info("Cloud deleted %s, deleting locally.", path)
+                try:
+                    local_path.unlink()
+                except Exception as exc:
+                    logger.error("Error deleting local file %s: %s", path, exc)
+                    return False
             
-            elif operation == "MOVED":
-                dest_path_str = change.get("dest_path")
-                if not dest_path_str:
-                    continue
-                dest_path = Path(self.sync_folder) / dest_path_str.replace("/", os.sep)
-                
-                # Check if we need to download it if it doesn't exist
-                if not dest_path.exists() and local_path.exists():
-                    logger.info("Cloud MOVED %s to %s, moving locally.", path, dest_path_str)
-                    try:
-                        dest_path.parent.mkdir(parents=True, exist_ok=True)
-                        local_path.rename(dest_path)
+            self.state.update_file_state(path, None, deleted=True)
+            return True
+        
+        elif operation == "MOVED":
+            dest_path_str = change.get("dest_path")
+            if not dest_path_str:
+                return True
+            dest_path = Path(self.sync_folder) / dest_path_str.replace("/", os.sep)
+            
+            if dest_path.exists():
+                from agent.hashing import sha256_file
+                try:
+                    existing_hash = sha256_file(str(dest_path))
+                    if existing_hash == file_hash:
                         self.state.update_file_state(path, None, deleted=True)
                         self.state.update_file_state(dest_path_str, file_hash, deleted=False)
-                    except Exception as exc:
-                        logger.error("Error moving local file %s: %s", path, exc)
-                elif not dest_path.exists() and not local_path.exists():
-                     # Just download it
-                     logger.info("Cloud MOVED %s to %s, but local missing, downloading...", path, dest_path_str)
-                     content = self.sender.download_file(file_id)
-                     if content is not None:
-                         try:
-                             dest_path.parent.mkdir(parents=True, exist_ok=True)
-                             dest_path.write_bytes(content)
-                             self.state.update_file_state(path, None, deleted=True)
-                             self.state.update_file_state(dest_path_str, file_hash, deleted=False)
-                             logger.info("Successfully downloaded %s", dest_path_str)
-                         except Exception as exc:
-                             logger.error("Error writing local file %s: %s", dest_path_str, exc)
+                        return True
+                except Exception:
+                    pass
+            
+            if local_path.exists():
+                logger.info("Cloud MOVED %s to %s, moving locally.", path, dest_path_str)
+                try:
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    local_path.replace(dest_path)
+                    self.state.update_file_state(path, None, deleted=True)
+                    self.state.update_file_state(dest_path_str, file_hash, deleted=False)
+                    return True
+                except Exception as exc:
+                    logger.error("Error moving local file %s: %s", path, exc)
+                    return False
+            else:
+                 logger.info("Cloud MOVED %s to %s, but local missing, downloading...", path, dest_path_str)
+                 content = self.sender.download_file(file_id)
+                 if content is not None:
+                     try:
+                         dest_path.parent.mkdir(parents=True, exist_ok=True)
+                         dest_path.write_bytes(content)
+                         self.state.update_file_state(path, None, deleted=True)
+                         self.state.update_file_state(dest_path_str, file_hash, deleted=False)
+                         logger.info("Successfully downloaded %s", dest_path_str)
+                         return True
+                     except Exception as exc:
+                         logger.error("Error writing local file %s: %s", dest_path_str, exc)
+                         return False
+                 else:
+                     logger.error("Failed to download file %s for MOVED", file_id)
+                     return False
 
-            elif operation in ("CREATED", "MODIFIED"):
-                known_hash = self.state.get_file_hash(path)
-                if known_hash == file_hash and local_path.exists():
-                    # We already have this file and hash
-                    continue
+        elif operation in ("CREATED", "MODIFIED"):
+            known_hash = self.state.get_file_hash(path)
+            if known_hash == file_hash and local_path.exists():
+                return True
+            
+            logger.info("Cloud %s %s, downloading...", operation, path)
+            content = self.sender.download_file(file_id)
+            if content is not None:
+                try:
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    local_path.write_bytes(content)
+                    self.state.update_file_state(path, file_hash, deleted=False)
+                    logger.info("Successfully downloaded %s", path)
+                    return True
+                except Exception as exc:
+                    logger.error("Error writing local file %s: %s", path, exc)
+                    return False
+            else:
+                logger.error("Failed to download file %s", file_id)
+                return False
                 
-                logger.info("Cloud %s %s, downloading...", operation, path)
-                content = self.sender.download_file(file_id)
-                if content is not None:
-                    try:
-                        local_path.parent.mkdir(parents=True, exist_ok=True)
-                        local_path.write_bytes(content)
-                        self.state.update_file_state(path, file_hash, deleted=False)
-                        logger.info("Successfully downloaded %s", path)
-                    except Exception as exc:
-                        logger.error("Error writing local file %s: %s", path, exc)
-
-        if latest_timestamp:
-            self.state.set_last_sync_timestamp(latest_timestamp)
+        return True

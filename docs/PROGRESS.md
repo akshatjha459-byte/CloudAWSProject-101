@@ -97,16 +97,17 @@ Update progress only after verification. Do not redesign architecture or silentl
 
 **Responsibility:** Establish true bidirectional synchronization. The Sync Agent fetches changes from the cloud via a polling mechanism and applies them locally without causing synchronization loops.
 
-**What was implemented:**
+**What was implemented and hardened:**
 - Created `agent/state.py` containing `SyncState` to persistently track known hashes and prevent sync loops.
 - Updated `agent/watcher.py` to consult `SyncState` before dispatching local events, ignoring those that match recent downloads.
 - Extended `agent/http_sender.py` with `get_changes()` and `download_file()` for backend interactions.
 - Added `agent/poller.py` with `CloudPoller` to query for cloud updates and persist changes/deletions.
-- Updated `agent/agent.py` to run `CloudPoller` alongside the watchdog observer.
+- **Redesigned Cloud Checkpointing (Hardening):** `CloudPoller` was redesigned to group incoming cloud changes by timestamp and process them sequentially. If any file download or local write fails, the batch is immediately halted, and the `last_sync_timestamp` is only advanced for fully successful timestamp groups. This prevents skipped changes (a flaw in the initial design where the timestamp advanced even on failure) and correctly handles multiple changes occurring in the exact same second.
+- **Hardened MOVED operations:** Added logic to gracefully handle partial moves, incorrect existing destination files (via `replace`), and idempotent retries.
 - Extended `backend/services/sync_service.py` and `backend/routes/api.py` with a new `GET /files/{id}/content` download endpoint.
 - Updated `docs/module-contracts.md` to document the new endpoint.
-- Created `modules/module-07/tests/test_m7.py` covering poller sync state logic and local file operations.
-- All 117 tests pass.
+- Created and expanded `modules/module-07/tests/test_m7.py` covering poller sync state logic, local file operations, partial failure recovery, identical timestamp handling, and crash idempotency.
+- All 123 tests pass (117 original + 6 new reliability regression tests).
 
 ### M6 — AWS IAM / Security
 
@@ -164,7 +165,7 @@ Will expose system state through the M3 REST API. The dashboard must not connect
 
 ## Verification History
 
-- **2026-09-04 — M7:** 117 tests passed; true bidirectional synchronization verified locally.
+- **2026-09-04 — M7:** 123 tests passed; true bidirectional synchronization hardened. Cloud checkpointing redesigned to prevent skipping failed changes or dropping identical timestamps. MOVED operation handling fortified against partial failures.
 - **2026-09-04 — M6:** Real AWS deployment, end-to-end verification, browser EC2 Instance Connect access, and persistent FastAPI service PASS. Verified EC2 IAM-role S3 access, FastAPI deployment, EC2-to-RDS connectivity, RDS schema creation, production API-key authentication (401/200), local Agent -> EC2 -> S3/RDS synchronization, metadata/version state, S3 object versioning, browser SSH access, and systemd persistence after closing SSH.
 - **2026-09-03 — M6:** 113 tests passed; code/security verification PASS. AWS infrastructure provisioned through EC2 IAM-role attachment.
 - **2026-09-03 — M5:** 109 passed, 1 skipped; M1 validation PASS.
