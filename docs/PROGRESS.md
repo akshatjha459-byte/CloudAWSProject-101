@@ -15,11 +15,11 @@ Update progress only after verification. Do not redesign architecture or silentl
 
 **Current module:** M6 — AWS IAM / Security
 
-**Overall phase:** M6 code complete; real AWS deployment and verification in progress.
+**Overall phase:** M6 COMPLETE — real AWS deployment and end-to-end verification completed.
 
-**Last verified:** M6 code/security implementation + AWS infrastructure provisioning through EC2 IAM-role attachment
+**Last verified:** M6 AWS infrastructure, EC2 deployment, IAM/security controls, application authentication, RDS connectivity/schema, and local Agent -> EC2 -> S3/RDS end-to-end synchronization.
 
-**Next action:** Deploy/configure the backend on EC2 and complete the remaining M6 AWS verification gate. Do **not** start M7 until that gate passes.
+**Next action:** Fix the remaining browser-based EC2 Instance Connect SSH issue from the AWS console. This is a deployment-access convenience issue and does not block the completed M6 application/security verification. After that, M7 — Bidirectional Synchronization can begin.
 
 ## Canonical Module Sequence
 
@@ -30,7 +30,7 @@ Update progress only after verification. Do not redesign architecture or silentl
 | M3 | FastAPI Backend / EC2 | **COMPLETE** |
 | M4 | Amazon S3 Storage | **COMPLETE** |
 | M5 | Amazon RDS Database | **COMPLETE** |
-| M6 | AWS IAM / Security | **PARTIAL — AWS verification pending** |
+| M6 | AWS IAM / Security | **COMPLETE** |
 | M7 | Bidirectional Synchronization | **NOT STARTED** |
 | M8 | Versioning & Conflict Handling | **NOT STARTED** |
 | M9 | Monitoring, Logging & Alerting | **NOT STARTED** |
@@ -45,12 +45,12 @@ Update progress only after verification. Do not redesign architecture or silentl
 - API-key authentication protects the intended API endpoints while `/health` remains public.
 - Production configuration enforces authentication.
 - Sync Agent propagates `X-API-Key` without hardcoding the secret.
-- EC2 S3 IAM policy template follows least privilege and uses a bucket-name placeholder.
+- EC2 S3 IAM policy follows least privilege and is scoped to the actual project bucket.
 - EC2 trust policy is present.
 - `.env.example` and `.gitignore` prevent committed runtime secrets.
 - M6 regression suite: **113 passed**, with one Starlette/httpx deprecation warning.
 
-### AWS infrastructure provisioned
+### AWS infrastructure provisioned and verified
 
 - [x] S3 bucket created in `ap-south-1` (Mumbai).
 - [x] S3 Versioning enabled.
@@ -64,31 +64,37 @@ Update progress only after verification. Do not redesign architecture or silentl
 - [x] EC2 `t3.micro` instance launched with Amazon Linux 2023, public IP enabled, `CloudAWSProject-EC2-SG` selected, and no extra file system.
 - [x] `CloudAWSProject-S3-Access` attached to `CloudAWSProject-EC2-Role`.
 - [x] `CloudAWSProject-EC2-Role` attached to the running EC2 instance.
+- [x] EC2 IAM-role access to the actual S3 bucket verified. Bucket-wide `s3:ListAllMyBuckets` remains denied as intended by least privilege, while access to the project bucket succeeds.
+- [x] FastAPI backend deployed and running on EC2 using Python 3.11 and Uvicorn.
+- [x] EC2 public API endpoint verified from Windows through port 8000.
+- [x] EC2-to-RDS network connectivity verified on TCP 5432.
+- [x] RDS metadata schema created/verified with tables `files`, `file_versions`, `sync_logs`, and `sync_changes`.
+- [x] Production backend environment configured on EC2 without committing runtime secrets.
+- [x] Application API-key authentication verified: missing/wrong key returns HTTP 401; correct key succeeds with HTTP 200.
+- [x] Local Windows Sync Agent configured with the EC2 backend URL and application API key.
+- [x] Agent successfully reached EC2 and received HTTP 200 responses for CREATED and MODIFIED events.
+- [x] Real local file test completed successfully through Agent -> EC2 -> S3/RDS.
+- [x] RDS confirmed the synchronized file metadata, current version, hash, size, synced status, and S3 storage key/version ID.
+- [x] S3 Versioning was exercised by the end-to-end test; the modified file reached version 2 and the API returned an S3 storage version ID.
+- [x] M6 AWS security/network requirements verified end-to-end.
 
-### AWS verification still pending
+### Remaining non-blocking item
 
-The following must be completed against the real AWS deployment:
-
-- [ ] Confirm EC2 can use its IAM role to access the actual S3 bucket.
-- [ ] Configure/deploy the FastAPI backend on EC2.
-- [ ] Configure EC2-to-RDS connectivity using the actual RDS endpoint/database credentials.
-- [ ] Configure production backend environment variables without committing secrets.
-- [ ] Configure the local Sync Agent with the EC2 backend URL and application API key.
-- [ ] Confirm Agent reaches EC2 using the application API key.
-- [ ] Confirm missing/wrong API key returns HTTP 401.
-- [ ] Confirm correct API key succeeds.
-- [ ] Run a real local file test completing Agent -> EC2 -> S3/RDS.
-- [ ] Verify the deployed M6 security/network requirements end-to-end.
-
-Do not mark these checks complete from documentation or local tests alone.
+- [ ] Browser-based EC2 Instance Connect SSH from the AWS console still fails to establish a connection. Normal SSH access from Windows was working and was used for deployment/verification. This is the final item to troubleshoot tomorrow and does not block the completed M6 application/security gate.
 
 ## Completed Modules
+
+### M6 — AWS IAM / Security
+
+**Status:** COMPLETE
+
+Completed the AWS security implementation and real AWS deployment/verification. The project now runs the FastAPI backend on EC2, uses an EC2 IAM role for least-privilege S3 access, keeps RDS private behind its security group, enforces production API-key authentication, and successfully completes a real local Windows Agent -> EC2 -> S3/RDS synchronization flow. Browser-based EC2 Instance Connect SSH remains as a non-blocking access issue to troubleshoot separately.
 
 ### M5 — Amazon RDS Database
 
 **Status:** COMPLETE
 
-Implemented PostgreSQL/SQLAlchemy metadata persistence, version records, synchronization logs and change-feed support through the existing M3 repository contract. File bytes remain in S3, not RDS. Local tests passed; real RDS deployment remains part of M6.
+Implemented PostgreSQL/SQLAlchemy metadata persistence, version records, synchronization logs and change-feed support through the existing M3 repository contract. File bytes remain in S3, not RDS. Local tests passed; real RDS deployment was completed and verified as part of M6.
 
 ### M4 — Amazon S3 Storage
 
@@ -100,13 +106,13 @@ Implemented the S3 storage adapter, S3 Versioning support and opt-in AWS integra
 
 **Status:** COMPLETE
 
-Implemented the REST API, service layer, storage/metadata abstractions and HTTP event sender used by M2. M4/M5 supply the concrete cloud adapters.
+Implemented the REST API, service layer, storage/metadata abstractions and HTTP event sender used by M2. M4/M5 supply the concrete cloud adapters. The backend is now deployed and verified on the real EC2 instance.
 
 ### M2 — Synchronization Agent
 
 **Status:** COMPLETE
 
-Implemented the portable filesystem watcher, normalized events, SHA-256 hashing, sender abstraction and agent entry point.
+Implemented the portable filesystem watcher, normalized events, SHA-256 hashing, sender abstraction and agent entry point. The agent was verified against the deployed EC2 backend.
 
 ### M1 — Local File System / Organization Server
 
@@ -118,7 +124,7 @@ Established the portable `organization/files/` source directory, environment con
 
 ### M7 — Bidirectional Synchronization
 
-Begins only after M6 AWS deployment/verification passes. M7 will implement cloud-to-local synchronization while preserving the existing local-to-cloud path and M1-M6 contracts.
+Begins after M6 AWS deployment/verification. M7 will implement cloud-to-local synchronization while preserving the existing local-to-cloud path and M1-M6 contracts.
 
 ### M8 — Versioning & Conflict Handling
 
@@ -134,7 +140,8 @@ Will expose system state through the M3 REST API. The dashboard must not connect
 
 ## Verification History
 
-- **2026-09-03 — M6:** 113 tests passed; code/security verification PASS. AWS infrastructure provisioned through EC2 IAM-role attachment; deployment/end-to-end verification pending.
+- **2026-09-04 — M6:** Real AWS deployment and end-to-end verification PASS. Verified EC2 IAM-role S3 access, FastAPI deployment, EC2-to-RDS connectivity, RDS schema creation, production API-key authentication (401/200), local Agent -> EC2 -> S3/RDS synchronization, metadata/version state, and S3 object versioning. Browser-based EC2 Instance Connect SSH remains the only non-blocking item to troubleshoot.
+- **2026-09-03 — M6:** 113 tests passed; code/security verification PASS. AWS infrastructure provisioned through EC2 IAM-role attachment.
 - **2026-09-03 — M5:** 109 passed, 1 skipped; M1 validation PASS.
 - **2026-09-03 — M4:** 92 passed, 1 skipped; M1 validation PASS.
 - **2026-09-03 — M3/M2:** 66 passed; M1 validation PASS.
