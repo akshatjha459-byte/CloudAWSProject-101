@@ -17,9 +17,9 @@ Update progress only after verification. Do not redesign architecture or silentl
 
 **Overall phase:** M6 COMPLETE — real AWS deployment and end-to-end verification completed.
 
-**Last verified:** M6 AWS infrastructure, EC2 deployment, IAM/security controls, application authentication, RDS connectivity/schema, and local Agent -> EC2 -> S3/RDS end-to-end synchronization.
+**Last verified:** M6 AWS infrastructure, EC2 deployment, IAM/security controls, application authentication, RDS connectivity/schema, local Agent -> EC2 -> S3/RDS end-to-end synchronization, browser EC2 Instance Connect access, and persistent FastAPI service configuration.
 
-**Next action:** Fix the remaining browser-based EC2 Instance Connect SSH issue from the AWS console. This is a deployment-access convenience issue and does not block the completed M6 application/security verification. After that, M7 — Bidirectional Synchronization can begin.
+**Next action:** M7 — Bidirectional Synchronization can begin.
 
 ## Canonical Module Sequence
 
@@ -58,7 +58,7 @@ Update progress only after verification. Do not redesign architecture or silentl
 - [x] S3 default encryption enabled (SSE-S3).
 - [x] Least-privilege IAM policy `CloudAWSProject-S3-Access` created for the actual project bucket.
 - [x] EC2 IAM role `CloudAWSProject-EC2-Role` created with EC2 trust policy.
-- [x] EC2 security group `CloudAWSProject-EC2-SG` created with SSH from My IP and TCP 8000 access.
+- [x] EC2 security group `CloudAWSProject-EC2-SG` created with SSH access and TCP 8000 access.
 - [x] RDS security group `CloudAWSProject-RDS-SG` created with PostgreSQL 5432 restricted to the EC2 security group.
 - [x] PostgreSQL RDS instance created with Public access disabled and `CloudAWSProject-RDS-SG` selected.
 - [x] EC2 `t3.micro` instance launched with Amazon Linux 2023, public IP enabled, `CloudAWSProject-EC2-SG` selected, and no extra file system.
@@ -77,10 +77,17 @@ Update progress only after verification. Do not redesign architecture or silentl
 - [x] RDS confirmed the synchronized file metadata, current version, hash, size, synced status, and S3 storage key/version ID.
 - [x] S3 Versioning was exercised by the end-to-end test; the modified file reached version 2 and the API returned an S3 storage version ID.
 - [x] M6 AWS security/network requirements verified end-to-end.
+- [x] Browser-based EC2 Instance Connect access verified successfully from the AWS console.
+- [x] SSH connectivity issue diagnosed: port 22 had been restricted to an old college Wi-Fi public IP; changing the SSH inbound rule to `0.0.0.0/0` restored access from the mobile network.
+- [x] FastAPI converted to a `systemd` service named `cloudaws-backend.service`.
+- [x] `cloudaws-backend.service` enabled for automatic startup and verified `active (running)`.
+- [x] FastAPI `/health` verified from Windows after closing the SSH session, proving the backend persists independently of the SSH terminal.
 
-### Remaining non-blocking item
+### Access/security note
 
-- [ ] Browser-based EC2 Instance Connect SSH from the AWS console still fails to establish a connection. Normal SSH access from Windows was working and was used for deployment/verification. This is the final item to troubleshoot tomorrow and does not block the completed M6 application/security gate.
+- Port 8000 is currently open for the project API/demo access.
+- Port 22 was temporarily opened to `0.0.0.0/0` to support SSH from changing networks and verify EC2 Instance Connect. For normal operation, SSH should preferably be restricted to the current administrator IP when practical.
+- Runtime passwords and API keys are intentionally not recorded in this progress file or `docs/AWSexplainer.md`.
 
 ## Completed Modules
 
@@ -88,7 +95,7 @@ Update progress only after verification. Do not redesign architecture or silentl
 
 **Status:** COMPLETE
 
-Completed the AWS security implementation and real AWS deployment/verification. The project now runs the FastAPI backend on EC2, uses an EC2 IAM role for least-privilege S3 access, keeps RDS private behind its security group, enforces production API-key authentication, and successfully completes a real local Windows Agent -> EC2 -> S3/RDS synchronization flow. Browser-based EC2 Instance Connect SSH remains as a non-blocking access issue to troubleshoot separately.
+Completed the AWS security implementation and real AWS deployment/verification. The project now runs the FastAPI backend on EC2, uses an EC2 IAM role for least-privilege S3 access, keeps RDS private behind its security group, enforces production API-key authentication, and successfully completes a real local Windows Agent -> EC2 -> S3/RDS synchronization flow. Browser EC2 Instance Connect access and persistent systemd-based FastAPI execution are also verified.
 
 ### M5 — Amazon RDS Database
 
@@ -106,7 +113,7 @@ Implemented the S3 storage adapter, S3 Versioning support and opt-in AWS integra
 
 **Status:** COMPLETE
 
-Implemented the REST API, service layer, storage/metadata abstractions and HTTP event sender used by M2. M4/M5 supply the concrete cloud adapters. The backend is now deployed and verified on the real EC2 instance.
+Implemented the REST API, service layer, storage/metadata abstractions and HTTP event sender used by M2. M4/M5 supply the concrete cloud adapters. The backend is now deployed and verified on the real EC2 instance and runs persistently through systemd.
 
 ### M2 — Synchronization Agent
 
@@ -140,7 +147,7 @@ Will expose system state through the M3 REST API. The dashboard must not connect
 
 ## Verification History
 
-- **2026-09-04 — M6:** Real AWS deployment and end-to-end verification PASS. Verified EC2 IAM-role S3 access, FastAPI deployment, EC2-to-RDS connectivity, RDS schema creation, production API-key authentication (401/200), local Agent -> EC2 -> S3/RDS synchronization, metadata/version state, and S3 object versioning. Browser-based EC2 Instance Connect SSH remains the only non-blocking item to troubleshoot.
+- **2026-09-04 — M6:** Real AWS deployment, end-to-end verification, browser EC2 Instance Connect access, and persistent FastAPI service PASS. Verified EC2 IAM-role S3 access, FastAPI deployment, EC2-to-RDS connectivity, RDS schema creation, production API-key authentication (401/200), local Agent -> EC2 -> S3/RDS synchronization, metadata/version state, S3 object versioning, browser SSH access, and systemd persistence after closing SSH.
 - **2026-09-03 — M6:** 113 tests passed; code/security verification PASS. AWS infrastructure provisioned through EC2 IAM-role attachment.
 - **2026-09-03 — M5:** 109 passed, 1 skipped; M1 validation PASS.
 - **2026-09-03 — M4:** 92 passed, 1 skipped; M1 validation PASS.
