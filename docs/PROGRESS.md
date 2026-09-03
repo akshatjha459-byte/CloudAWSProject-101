@@ -13,13 +13,13 @@ Update progress only after verification. Do not redesign architecture or silentl
 
 ## Overall Status
 
-**Current module:** M6 — AWS IAM / Security
+**Current module:** M7 — Bidirectional Synchronization
 
-**Overall phase:** M6 COMPLETE — real AWS deployment and end-to-end verification completed.
+**Overall phase:** M7 COMPLETE — ready to begin Module 8
 
 **Last verified:** M6 AWS infrastructure, EC2 deployment, IAM/security controls, application authentication, RDS connectivity/schema, local Agent -> EC2 -> S3/RDS end-to-end synchronization, browser EC2 Instance Connect access, and persistent FastAPI service configuration.
 
-**Next action:** M7 — Bidirectional Synchronization can begin.
+**Next action:** Implement and verify Module 8: Versioning & Conflict Handling.
 
 ## Canonical Module Sequence
 
@@ -31,7 +31,7 @@ Update progress only after verification. Do not redesign architecture or silentl
 | M4 | Amazon S3 Storage | **COMPLETE** |
 | M5 | Amazon RDS Database | **COMPLETE** |
 | M6 | AWS IAM / Security | **COMPLETE** |
-| M7 | Bidirectional Synchronization | **NOT STARTED** |
+| M7 | Bidirectional Synchronization | **COMPLETE** |
 | M8 | Versioning & Conflict Handling | **NOT STARTED** |
 | M9 | Monitoring, Logging & Alerting | **NOT STARTED** |
 | M10 | Frontend Dashboard | **NOT STARTED** |
@@ -91,6 +91,23 @@ Update progress only after verification. Do not redesign architecture or silentl
 
 ## Completed Modules
 
+### M7 — Bidirectional Synchronization
+
+**Status:** COMPLETE
+
+**Responsibility:** Establish true bidirectional synchronization. The Sync Agent fetches changes from the cloud via a polling mechanism and applies them locally without causing synchronization loops.
+
+**What was implemented:**
+- Created `agent/state.py` containing `SyncState` to persistently track known hashes and prevent sync loops.
+- Updated `agent/watcher.py` to consult `SyncState` before dispatching local events, ignoring those that match recent downloads.
+- Extended `agent/http_sender.py` with `get_changes()` and `download_file()` for backend interactions.
+- Added `agent/poller.py` with `CloudPoller` to query for cloud updates and persist changes/deletions.
+- Updated `agent/agent.py` to run `CloudPoller` alongside the watchdog observer.
+- Extended `backend/services/sync_service.py` and `backend/routes/api.py` with a new `GET /files/{id}/content` download endpoint.
+- Updated `docs/module-contracts.md` to document the new endpoint.
+- Created `modules/module-07/tests/test_m7.py` covering poller sync state logic and local file operations.
+- All 117 tests pass.
+
 ### M6 — AWS IAM / Security
 
 **Status:** COMPLETE
@@ -147,6 +164,7 @@ Will expose system state through the M3 REST API. The dashboard must not connect
 
 ## Verification History
 
+- **2026-09-04 — M7:** 117 tests passed; true bidirectional synchronization verified locally.
 - **2026-09-04 — M6:** Real AWS deployment, end-to-end verification, browser EC2 Instance Connect access, and persistent FastAPI service PASS. Verified EC2 IAM-role S3 access, FastAPI deployment, EC2-to-RDS connectivity, RDS schema creation, production API-key authentication (401/200), local Agent -> EC2 -> S3/RDS synchronization, metadata/version state, S3 object versioning, browser SSH access, and systemd persistence after closing SSH.
 - **2026-09-03 — M6:** 113 tests passed; code/security verification PASS. AWS infrastructure provisioned through EC2 IAM-role attachment.
 - **2026-09-03 — M5:** 109 passed, 1 skipped; M1 validation PASS.

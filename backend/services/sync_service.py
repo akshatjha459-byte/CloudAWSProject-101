@@ -295,6 +295,18 @@ class SyncService:
     def list_files(self) -> list[FileRecord]:
         return self._repo.list_files()
 
+    def download(self, file_id: int) -> bytes:
+        file_record = self._repo.get_file_by_id(file_id)
+        if file_record is None:
+            raise SyncNotFoundError(f"file {file_id} not found")
+        if file_record.deleted:
+            raise SyncNotFoundError(f"file {file_id} is deleted")
+        
+        content = self._storage.get(file_record.storage_key)
+        if content is None:
+            raise SyncNotFoundError(f"file content for {file_id} not found in storage")
+        return content
+
     def list_versions(self, file_id: int) -> tuple[FileRecord, list[VersionRecord]]:
         file_record = self._repo.get_file_by_id(file_id)
         if file_record is None:

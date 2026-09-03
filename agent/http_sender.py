@@ -193,3 +193,31 @@ class HttpEventSender(EventSender):
             logger.warning("Local file missing for upload: %s", local)
             return None
         return local.read_bytes()
+
+    def get_changes(self, since: Optional[str] = None) -> list[dict]:
+        url = f"{self.backend_url}/sync/changes"
+        if since:
+            import urllib.parse
+            url += "?since=" + urllib.parse.quote(since)
+        request = Request(url, headers={"X-API-Key": self.api_key} if self.api_key else {})
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                if response.status == 200:
+                    data = json.loads(response.read())
+                    return data.get("changes", [])
+                logger.error("Failed to fetch changes: %s", response.status)
+        except Exception as exc:
+            logger.error("Error fetching changes: %s", exc)
+        return []
+
+    def download_file(self, file_id: int) -> Optional[bytes]:
+        url = f"{self.backend_url}/files/{file_id}/content"
+        request = Request(url, headers={"X-API-Key": self.api_key} if self.api_key else {})
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                if response.status == 200:
+                    return response.read()
+                logger.error("Failed to download file %s: %s", file_id, response.status)
+        except Exception as exc:
+            logger.error("Error downloading file %s: %s", file_id, exc)
+        return None

@@ -106,6 +106,13 @@ class _SyncEventHandler(FileSystemEventHandler):
 
         if operation in (OP_CREATED, OP_MODIFIED):
             file_hash, size = self._hash_and_size(src)
+            # Prevent loop: if the hash matches our known state, ignore it
+            from agent.state import SyncState
+            state = SyncState(self._sync_folder)
+            known_hash = state.get_file_hash(rel_src)
+            if known_hash and known_hash == file_hash:
+                logger.debug("Ignoring %s %s (hash %s matches known state)", operation, rel_src, file_hash)
+                return
         else:
             file_hash, size = None, None
 
@@ -126,6 +133,16 @@ class _SyncEventHandler(FileSystemEventHandler):
         logger.info("Dispatching: %s", event.to_json())
         try:
             self._sender.send(event)
+            # Update state after successful send
+            from agent.state import SyncState
+            state = SyncState(self._sync_folder)
+            if operation == OP_DELETED:
+                state.update_file_state(rel_src, None, deleted=True)
+            elif operation == OP_MOVED and rel_dest:
+                state.update_file_state(rel_src, None, deleted=True)
+                state.update_file_state(rel_dest, file_hash, deleted=False)
+            else:
+                state.update_file_state(rel_src, file_hash, deleted=False)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error("Sender raised an exception for event %s: %s", event.operation, exc)
 

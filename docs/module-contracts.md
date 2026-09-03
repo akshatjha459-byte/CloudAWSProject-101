@@ -42,6 +42,7 @@ M3 provides at minimum:
 - POST /sync/delete
 - GET /sync/changes
 - GET /files
+- GET /files/{id}/content
 - GET /files/{id}/versions
 - GET /logs
 - GET /status

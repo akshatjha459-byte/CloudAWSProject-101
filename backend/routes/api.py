@@ -149,6 +149,27 @@ def list_files(service: SyncService = Depends(get_service)) -> FilesResponse:
     return FilesResponse(count=len(files), files=files)
 
 
+from fastapi.responses import Response
+
+@router.get(
+    "/files/{file_id}/content",
+    responses={404: {"model": ErrorResponse}},
+    dependencies=[Depends(verify_api_key)],
+)
+def download_file(
+    file_id: int,
+    service: SyncService = Depends(get_service),
+) -> Response:
+    try:
+        content = service.download(file_id)
+        return Response(content=content, media_type="application/octet-stream")
+    except SyncNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"success": False, "error": "not_found", "detail": str(exc)},
+        ) from exc
+
+
 @router.get(
     "/files/{file_id}/versions",
     response_model=VersionsResponse,

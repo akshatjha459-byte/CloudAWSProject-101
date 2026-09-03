@@ -47,14 +47,19 @@ def main() -> int:
             sync_folder=SYNC_FOLDER,
             api_key=API_KEY or None,
         )
+        from agent.poller import CloudPoller
+        poller = CloudPoller(sender=sender, sync_folder=SYNC_FOLDER, interval=2)
     else:
         logger.info("Sender: LoggingEventSender (BACKEND_URL not set)")
         sender = LoggingEventSender()
+        poller = None
 
     watcher = SyncWatcher(sync_folder=SYNC_FOLDER, sender=sender)
 
     try:
         watcher.start()
+        if poller:
+            poller.start()
         while True:
             time.sleep(1)
     except FileNotFoundError as exc:
@@ -64,6 +69,8 @@ def main() -> int:
         logger.info("Shutdown requested — stopping watcher...")
     finally:
         watcher.stop()
+        if poller:
+            poller.stop()
 
     logger.info("=== Synchronisation Agent stopped ===")
     return 0
