@@ -1,87 +1,141 @@
-# Module 6: AWS IAM, Security & Deployment
+# Module 6: AWS IAM, Security & Deployment Verification
 
-This module secures the CloudAWSProject-101 architecture and prepares it for real-world deployment on an Amazon EC2 instance using your AWS account. 
+Module 6 establishes the AWS security boundary and deployment verification gate. It is fully complete only after the local security implementation and the real AWS environment have both been verified.
 
-## Architectural Security Model
+## Scope
 
-1. **Authentication (Agent ↔ EC2 Backend):**
-   The FastAPI backend uses an application-level API key (`X-API-Key` header). The local Sync Agent must be configured with this key to push updates. This prevents unauthorized users from modifying your organization files.
+M6 owns:
+- EC2 IAM role / instance profile and least-privilege AWS permissions.
+- Application authentication between the Synchronization Agent and EC2.
+- EC2/RDS network isolation and security-group requirements.
+- Deployment configuration required to run the existing backend on EC2.
+- Verification that EC2 can securely reach S3 and RDS and that the Agent can securely reach EC2.
 
-2. **IAM Least Privilege (EC2 ↔ AWS Services):**
-   The EC2 backend uses an **IAM Instance Role**, not hardcoded access keys. The AWS SDK (boto3) automatically retrieves short-lived temporary credentials from the EC2 instance metadata service. The policy grants strictly the permissions required for the application to function (e.g., `s3:PutObject`, `s3:GetObject`), and excludes infrastructure-management permissions like `s3:PutBucketVersioning`.
+M6 does **not** own bidirectional synchronization. **M7 remains Bidirectional Synchronization.** M6 also does not redesign M4 S3 storage, M5 RDS schema/repository, M8 conflict handling, M9 monitoring/alerting, or M10 dashboard behavior.
 
-3. **Network Isolation (Internet ↔ EC2 ↔ RDS):**
-   The RDS PostgreSQL database must **not** be publicly accessible. It must reside in a security group that only accepts inbound PostgreSQL traffic (port 5432) from the EC2 backend's security group.
+## Security Model
 
-## Implementation Status
+1. **Agent -> EC2:** FastAPI protected endpoints use the application-level `X-API-Key` mechanism. `/health` remains public. In production, protected endpoints require the configured key; missing or incorrect keys return HTTP 401.
+2. **EC2 -> AWS:** EC2 uses an IAM instance role / instance profile. No long-lived AWS access keys are stored in the application. boto3 uses the EC2 role's temporary credentials.
+3. **Least privilege:** The runtime policy is restricted to the actual project S3 bucket and only the S3 actions required by the application. Infrastructure-management permissions such as `s3:PutBucketVersioning` are not runtime permissions.
+4. **Network isolation:** RDS PostgreSQL is not publicly accessible. Inbound TCP 5432 must be allowed only from the EC2 security group, not `0.0.0.0/0`.
 
-### A. Code Verified Locally (Completed)
-- [x] API Key enforcement middleware (`backend/routes/api.py`).
-- [x] `APP_ENV` configuration to strictly enforce authentication in `production` and allow bypass in `development`.
-- [x] Agent HTTP sender updated to transmit the `X-API-Key` header.
-- [x] IAM Least-Privilege Policy template (`ec2_s3_policy.json`).
-- [x] IAM Trust Policy (`trust_policy_ec2.json`).
-- [x] Environment variable placeholders properly configured in `.env.example`.
-- [x] Git ignores updated to prevent leaking `.env` and secrets.
-- [x] Local test suite passes (113/113 tests).
+## Code Verification — Completed
 
-### B. AWS Console Configuration Required (Pending User Action)
-Since this project uses a real AWS account, you must perform the following infrastructure steps in the AWS Console.
+- [x] API-key authentication for protected API endpoints.
+- [x] Public `/health` endpoint.
+- [x] Production authentication behavior.
+- [x] Agent sends `X-API-Key` without hardcoding it.
+- [x] Least-privilege S3 policy template using `YOUR-BUCKET-NAME`.
+- [x] EC2 trust policy.
+- [x] `.env.example` uses placeholders; real secrets are excluded from Git.
+- [x] 113/113 tests passed in the M6 regression suite.
 
-1. **S3 Bucket Creation:**
-   - Create an S3 bucket (e.g., `my-cloudaws-bucket`).
-   - Enable S3 Bucket Versioning.
+## AWS Deployment — Pending
 
-2. **IAM Configuration:**
-   - Go to IAM -> Policies -> Create Policy.
-   - Paste the contents of `infrastructure/iam_policies/ec2_s3_policy.json` (Replace `YOUR-BUCKET-NAME` with your actual bucket name).
-   - Go to IAM -> Roles -> Create Role (Trusted entity: EC2).
-   - Attach the newly created S3 policy to the role.
+The project uses the user's real AWS account and available credits. M6 AWS deployment must be completed before M7 starts.
 
-3. **Security Groups:**
-   - Create an **EC2 Security Group**: Allow inbound HTTP (TCP 80 or 8000) from the internet, and SSH (TCP 22) from your IP.
-   - Create an **RDS Security Group**: Allow inbound PostgreSQL (TCP 5432) **ONLY** from the EC2 Security Group. Do not allow `0.0.0.0/0`.
+### S3
+- Create the project bucket.
+- Enable S3 Versioning.
+- Record the exact bucket name.
 
-4. **RDS Database:**
-   - Launch a PostgreSQL RDS instance in the same VPC as your EC2.
-   - Attach the **RDS Security Group**.
-   - Ensure "Public access" is set to **No**.
+### IAM
+- Create a customer-managed policy from `infrastructure/iam_policies/ec2_s3_policy.json`.
+- Replace `YOUR-BUCKET-NAME` with the actual bucket name before creating the policy.
+- Create an IAM role trusted by EC2.
+- Attach the S3 policy to the role.
+- Attach the role/instance profile to EC2.
+- Do not put AWS access keys in the repository or deployed application.
 
-5. **EC2 Deployment:**
-   - Launch an EC2 instance (Amazon Linux 2023 or Ubuntu).
-   - Under "Advanced details", attach the **IAM Role** created in Step 2.
-   - Attach the **EC2 Security Group**.
-   - SSH into the instance, install Python 3, and clone this repository.
-   - Set up the environment variables (e.g., in a `.env` file on the instance, **never** commit this).
-     ```env
-     APP_ENV=production
-     API_KEY=your-secure-random-string
-     AWS_REGION=us-east-1
-     S3_BUCKET=my-cloudaws-bucket
-     STORAGE_ADAPTER=s3
-     METADATA_ADAPTER=rds
-     RDS_HOST=your-rds-endpoint.amazonaws.com
-     RDS_PORT=5432
-     RDS_DATABASE=your_db_name
-     RDS_USERNAME=your_db_user
-     RDS_PASSWORD=your_db_password
-     ```
-   - Start the FastAPI application (e.g., using `uvicorn backend.main:app --host 0.0.0.0 --port 8000`).
+### Security Groups
+Create separate EC2 and RDS security groups.
 
-6. **Local Agent Configuration:**
-   - On your local machine, configure `.env`:
-     ```env
-     BACKEND_URL=http://<your-ec2-public-ip>:8000
-     API_KEY=your-secure-random-string
-     ```
-   - Start the sync agent: `python -m agent.agent`
+**EC2:**
+- Allow only the backend port needed for the demonstration (for example TCP 8000).
+- Restrict SSH TCP 22 to the administrator's IP where possible.
+- Do not expose unrelated ports.
 
-### C. AWS Configuration Actually Verified (Pending)
-The following must be explicitly verified by you once the AWS environment is running:
+**RDS:**
+- Allow TCP 5432 only from the EC2 security group.
+- Do not allow `0.0.0.0/0` for PostgreSQL.
+- Set RDS Public access to **No**.
 
-- [ ] EC2 successfully authenticates with S3 via the IAM Instance Role (no access keys hardcoded).
-- [ ] EC2 successfully connects to the RDS instance.
-- [ ] Direct internet access to the RDS instance is blocked.
-- [ ] Local Sync Agent successfully connects to EC2 and pushes files.
-- [ ] Unauthorized requests (missing or wrong `X-API-Key`) to the EC2 backend return HTTP 401.
-- [ ] Authorized requests to the EC2 backend succeed.
+### RDS PostgreSQL
+- Create PostgreSQL RDS in the same VPC as EC2.
+- Attach the RDS security group.
+- Keep endpoint, username, database name and password out of Git.
+
+### EC2 Backend
+- Launch a supported Linux EC2 instance.
+- Attach the EC2 security group and IAM role.
+- Clone the repository.
+- Configure a real `.env` on the instance, never commit it.
+
+Example configuration:
+
+```env
+APP_ENV=production
+API_KEY=<set-a-secret-api-key>
+AWS_REGION=<actual-region>
+S3_BUCKET=<actual-bucket-name>
+STORAGE_ADAPTER=s3
+METADATA_ADAPTER=rds
+RDS_HOST=<actual-rds-endpoint>
+RDS_PORT=5432
+RDS_DATABASE=<actual-database>
+RDS_USERNAME=<actual-user>
+RDS_PASSWORD=<actual-password>
+```
+
+Start the existing FastAPI application, for example:
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+### Local Agent
+
+Configure the demonstration laptop with the EC2 endpoint and application key:
+
+```env
+BACKEND_URL=http://<ec2-endpoint>:8000
+API_KEY=<same-api-key-used-by-backend>
+```
+
+The demonstration laptop does **not** need AWS credentials or direct RDS access.
+
+## AWS Verification Checklist
+
+M6 is **FULLY COMPLETE** only after these real-AWS checks pass:
+
+- [ ] EC2 has the intended IAM role/instance profile attached.
+- [ ] EC2 accesses the project S3 bucket using the IAM role and no hardcoded AWS keys.
+- [ ] S3 Versioning is enabled.
+- [ ] EC2 connects to RDS PostgreSQL.
+- [ ] RDS is not publicly accessible.
+- [ ] RDS inbound TCP 5432 accepts traffic only from the EC2 security group.
+- [ ] Agent reaches the EC2 backend.
+- [ ] Missing `X-API-Key` returns HTTP 401 on a protected endpoint.
+- [ ] Incorrect `X-API-Key` returns HTTP 401.
+- [ ] Correct `X-API-Key` succeeds.
+- [ ] A real local file completes Agent -> EC2 -> S3/RDS using the existing M1-M5 contracts.
+
+Record actual results. Do not mark an AWS check complete based only on documentation or local tests.
+
+## Current Status
+
+**Code/security implementation:** VERIFIED.
+
+**AWS deployment:** PENDING.
+
+**Next safe step:** Complete the AWS deployment and verification checklist above. Do **not** start M7 until this gate is complete.
+
+## Future Module Boundaries
+
+- **M7:** Bidirectional Synchronization — cloud-to-local and local-to-cloud synchronization behavior.
+- **M8:** Versioning & Conflict Handling — conflict detection/resolution using the existing state and version model.
+- **M9:** Monitoring, Logging & Alerting — CloudWatch, CloudTrail, SNS and operational visibility.
+- **M10:** Frontend Dashboard — dashboard through the M3 REST API; no direct RDS access.
+
+Future modules must consume the existing contracts rather than moving M6 security responsibilities or redefining the module sequence.
