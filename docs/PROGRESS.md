@@ -13,13 +13,13 @@ This file is the project's implementation state and handoff record.
 
 ## Overall Status
 
-**Current module:** Module 6
+**Current module:** Module 7
 
-**Overall phase:** Module 5 complete — ready to begin Module 6
+**Overall phase:** Module 6 complete — ready to begin Module 7
 
-**Last verified module:** Module 5
+**Last verified module:** Module 6
 
-**Next action:** Implement and verify Module 6: AWS IAM / Security.
+**Next action:** Implement and verify Module 7: Bidirectional Synchronization.
 
 ## Module Status
 
@@ -30,13 +30,74 @@ This file is the project's implementation state and handoff record.
 | M3 | FastAPI Backend / EC2 | COMPLETE | YES | FastAPI API layer, adapters, HttpEventSender. |
 | M4 | Amazon S3 Storage | COMPLETE | YES | S3 FileStorage adapter with versioning-aware delete. |
 | M5 | Amazon RDS Database | COMPLETE | YES | SQLAlchemy RDS metadata repository (files/versions/logs/changes). |
-| M6 | AWS IAM / Security | NOT STARTED | — | Permissions, roles, and least privilege. |
+| M6 | AWS IAM / Security | COMPLETE | YES | IAM policies, API key auth, and security group isolation. |
 | M7 | Bidirectional Synchronization | NOT STARTED | — | Cloud-to-local synchronization. |
 | M8 | Versioning & Conflict Handling | NOT STARTED | — | Version tracking and conflict handling. |
 | M9 | Monitoring, Logging & Alerting | NOT STARTED | — | CloudWatch, CloudTrail, and SNS. |
 | M10 | Frontend Dashboard | NOT STARTED | — | Dashboard consuming backend APIs. |
 
+
 ## Module Handoffs
+
+### Module 6 — AWS IAM / Security
+
+**Status:** COMPLETE
+
+**Responsibility:** Define least-privilege IAM roles/policies for S3 access, implement API key authentication middleware (`X-API-Key`), configure security headers/CORS, and establish network security group isolation patterns for EC2 and RDS.
+
+**Does NOT own:** S3 object storage logic (M4), RDS schema/repository (M5), bidirectional sync engine (M7), CloudWatch/SNS (M9).
+
+---
+
+#### Implementation
+
+Implemented and verified on 2026-09-03.
+
+**What was implemented:**
+- Created IAM policy templates: `infrastructure/iam_policies/ec2_s3_policy.json` and `trust_policy_ec2.json`.
+- Added `API_KEY` configuration support in `backend/config.py` and `X-API-Key` header authentication dependency in `backend/routes/api.py`.
+- Updated `agent/http_sender.py` to transmit `X-API-Key` header when `API_KEY` is configured.
+- Added test suite `modules/module-06/tests/test_m6.py` covering policy JSON validation, endpoint 401/200 authentication checks, and agent header transmission.
+- Updated `.env.example` and `modules/module-06/README.md`.
+
+---
+
+#### Verification
+
+**Tests / validation performed:**
+```bash
+python -m pytest modules/module-06/tests/test_m6.py modules/module-05/tests/test_m5.py modules/module-04/tests/test_m4.py modules/module-03/tests/test_m3.py modules/module-02/tests/test_m2.py -v
+python modules/module-01/validate_m1.py
+```
+
+**Actual results:**
+- pytest: **113 passed**, 1 Starlette/httpx deprecation warning, 7.74s
+- M1 `validate_m1.py`: **PASS** (exit code 0)
+
+**Verification result: PASS**
+
+---
+
+#### Files created/modified
+
+| Action | File |
+|---|---|
+| CREATED | `infrastructure/iam_policies/ec2_s3_policy.json` |
+| CREATED | `infrastructure/iam_policies/trust_policy_ec2.json` |
+| CREATED | `modules/module-06/tests/test_m6.py` |
+| MODIFIED | `modules/module-06/README.md` |
+| MODIFIED | `backend/config.py` |
+| MODIFIED | `backend/routes/api.py` |
+| MODIFIED | `agent/http_sender.py` |
+| MODIFIED | `.env.example` |
+| MODIFIED | `docs/PROGRESS.md` |
+
+---
+
+#### Next
+
+M6 is complete. Begin Module 7: Bidirectional Synchronization.
+
 
 ### Module 5 — Amazon RDS Database
 

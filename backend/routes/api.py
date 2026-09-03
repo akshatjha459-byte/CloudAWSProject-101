@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile
 
+from backend import config
 from backend.models import (
     ChangesResponse,
     DeleteRequest,
@@ -27,6 +28,14 @@ from backend.services.sync_service import SyncNotFoundError, SyncService, SyncVa
 router = APIRouter()
 
 
+def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> None:
+    if config.API_KEY and x_api_key != config.API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail={"success": False, "error": "unauthorized", "detail": "Invalid or missing API key"},
+        )
+
+
 def get_service(request: Request) -> SyncService:
     return request.app.state.sync_service
 
@@ -36,10 +45,12 @@ def health() -> HealthResponse:
     return HealthResponse()
 
 
+
 @router.post(
     "/sync/upload",
     response_model=UploadResult,
     responses={400: {"model": ErrorResponse}},
+    dependencies=[Depends(verify_api_key)],
 )
 async def sync_upload(
     operation: str = Form(...),
@@ -75,6 +86,7 @@ async def sync_upload(
     "/sync/delete",
     response_model=DeleteResult,
     responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+    dependencies=[Depends(verify_api_key)],
 )
 def sync_delete(
     body: DeleteRequest,
@@ -89,7 +101,11 @@ def sync_delete(
         ) from exc
 
 
-@router.get("/sync/changes", response_model=ChangesResponse)
+@router.get(
+    "/sync/changes",
+    response_model=ChangesResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 def sync_changes(
     since: Optional[str] = Query(
         default=None,
@@ -101,7 +117,11 @@ def sync_changes(
     return ChangesResponse(since=since, count=len(changes), changes=changes)
 
 
-@router.get("/files", response_model=FilesResponse)
+@router.get(
+    "/files",
+    response_model=FilesResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 def list_files(service: SyncService = Depends(get_service)) -> FilesResponse:
     files = service.list_files()
     return FilesResponse(count=len(files), files=files)
@@ -111,6 +131,7 @@ def list_files(service: SyncService = Depends(get_service)) -> FilesResponse:
     "/files/{file_id}/versions",
     response_model=VersionsResponse,
     responses={404: {"model": ErrorResponse}},
+    dependencies=[Depends(verify_api_key)],
 )
 def file_versions(
     file_id: int,
@@ -126,12 +147,21 @@ def file_versions(
     return VersionsResponse(file_id=file_id, count=len(versions), versions=versions)
 
 
-@router.get("/logs", response_model=LogsResponse)
+@router.get(
+    "/logs",
+    response_model=LogsResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 def list_logs(service: SyncService = Depends(get_service)) -> LogsResponse:
     logs = service.list_logs()
     return LogsResponse(count=len(logs), logs=logs)
 
 
-@router.get("/status", response_model=StatusResponse)
+@router.get(
+    "/status",
+    response_model=StatusResponse,
+    dependencies=[Depends(verify_api_key)],
+)
 def status(service: SyncService = Depends(get_service)) -> StatusResponse:
     return service.status()
+

@@ -87,6 +87,7 @@ class HttpEventSender(EventSender):
         sync_folder: str,
         *,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        api_key: Optional[str] = None,
         http_post: Optional[HttpPostFn] = None,
     ) -> None:
         url = (backend_url or "").strip().rstrip("/")
@@ -98,6 +99,7 @@ class HttpEventSender(EventSender):
         self.backend_url = url
         self.sync_folder = sync_folder
         self.timeout = timeout
+        self.api_key = api_key if api_key is not None else os.environ.get("API_KEY", "")
         self._http_post = http_post or default_http_post
         self.last_status: Optional[int] = None
         self.last_error: Optional[str] = None
@@ -142,6 +144,8 @@ class HttpEventSender(EventSender):
         payload = event.to_dict()
         body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
         return self._http_post(
             f"{self.backend_url}/sync/delete",
             headers,
@@ -173,12 +177,15 @@ class HttpEventSender(EventSender):
 
         body, content_type = _multipart(fields, file_bytes, filename)
         headers = {"Content-Type": content_type, "Accept": "application/json"}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
         return self._http_post(
             f"{self.backend_url}/sync/upload",
             headers,
             body,
             self.timeout,
         )
+
 
     def _read_local_file(self, relative_path: str) -> Optional[bytes]:
         local = Path(self.sync_folder) / relative_path.replace("/", os.sep)

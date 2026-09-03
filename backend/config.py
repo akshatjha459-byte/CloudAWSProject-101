@@ -67,3 +67,7 @@ RDS_DATABASE: str = _env("RDS_DATABASE")
 RDS_USERNAME: str = _env("RDS_USERNAME")
 RDS_PASSWORD: str = _env("RDS_PASSWORD")
 RDS_SSLMODE: str = _env("RDS_SSLMODE", "require")
+
+# Module 6 — Security & API Authentication. Optional API key header validation.
+API_KEY: str = _env("API_KEY", "")
+
