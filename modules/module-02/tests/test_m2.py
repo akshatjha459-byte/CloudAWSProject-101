@@ -336,7 +336,9 @@ class TestWatcherIntegration(unittest.TestCase):
     def test_created_event(self) -> None:
         self._clear()
         path = os.path.join(self._tmpdir, "new_file.txt")
-        _write(path, "hello world")
+        temp_path = path + ".tmp"
+        _write(temp_path, "hello world")
+        os.rename(temp_path, path)
         ev = _wait_for(self._sender, OP_CREATED)
         self.assertIsNotNone(ev, "Expected CREATED event but none received within timeout")
         self.assertEqual(ev.operation, OP_CREATED)

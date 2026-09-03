@@ -151,7 +151,21 @@ class _SyncEventHandler(FileSystemEventHandler):
     def on_moved(self, raw_event: FileMovedEvent | DirMovedEvent) -> None:
         if isinstance(raw_event, DirMovedEvent):
             return
-        self._dispatch(OP_MOVED, raw_event.src_path, raw_event.dest_path)
+        
+        src_ignored = _should_ignore(raw_event.src_path)
+        dest_ignored = _should_ignore(raw_event.dest_path)
+        
+        if src_ignored and dest_ignored:
+            return
+        elif src_ignored and not dest_ignored:
+            # Appeared from an ignored path (e.g., .tmp rename) -> CREATED
+            self._dispatch(OP_CREATED, raw_event.dest_path)
+        elif not src_ignored and dest_ignored:
+            # Moved to an ignored path -> DELETED
+            self._dispatch(OP_DELETED, raw_event.src_path)
+        else:
+            # Normal move
+            self._dispatch(OP_MOVED, raw_event.src_path, raw_event.dest_path)
 
 
 # ---------------------------------------------------------------------------

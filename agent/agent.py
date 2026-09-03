@@ -21,7 +21,7 @@ import signal
 import sys
 import time
 
-from agent.config import BACKEND_URL, SYNC_FOLDER
+from agent.config import API_KEY, BACKEND_URL, SYNC_FOLDER
 from agent.http_sender import HttpEventSender
 from agent.sender import LoggingEventSender
 from agent.watcher import SyncWatcher
@@ -42,7 +42,11 @@ def main() -> int:
 
     if BACKEND_URL:
         logger.info("Sender: HttpEventSender -> %s", BACKEND_URL)
-        sender = HttpEventSender(backend_url=BACKEND_URL, sync_folder=SYNC_FOLDER)
+        sender = HttpEventSender(
+            backend_url=BACKEND_URL,
+            sync_folder=SYNC_FOLDER,
+            api_key=API_KEY or None,
+        )
     else:
         logger.info("Sender: LoggingEventSender (BACKEND_URL not set)")
         sender = LoggingEventSender()

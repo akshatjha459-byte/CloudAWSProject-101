@@ -16,26 +16,39 @@ This file is the project's implementation state and handoff record.
 **Current module:** Module 7
 
 **Overall phase:** Module 6 complete — ready to begin Module 7
+**Overall phase:** Module 6 code complete — AWS deployment pending
 
 **Last verified module:** Module 6
 
 **Next action:** Implement and verify Module 7: Bidirectional Synchronization.
 
 ## Module Status
+| Module | Component | Status | Notes |
+|---|---|---|---|
+| M1 | Local File System & Organisation | **COMPLETE** | Validated via `validate_m1.py`. |
+| M2 | Synchronisation Agent | **COMPLETE** | Watchdog observer and event normalisation active. |
+| M3 | REST API & Data Contracts | **COMPLETE** | HTTP sender and memory backend active. |
+| M4 | Cloud Storage (Amazon S3) | **COMPLETE** | S3 adapter implemented; boto3 credential chain configured. |
+| M5 | Relational Database (Amazon RDS) | **COMPLETE** | PostgreSQL adapter implemented. |
+| M6 | AWS IAM & Security | **PARTIAL** | Code verified locally. AWS Console deployment pending. |
+| M7 | End-to-End Cloud Deployment | NOT STARTED | Planned for future phase. |
 
-| Module | Name | Status | Tested | Notes |
-|---|---|---|---|---|
-| M1 | Local File System / Organization Server | COMPLETE | YES | Portable local directory established; watcher belongs to M2. |
-| M2 | Synchronization Agent | COMPLETE | YES | Filesystem watching and local sync logic. |
-| M3 | FastAPI Backend / EC2 | COMPLETE | YES | FastAPI API layer, adapters, HttpEventSender. |
-| M4 | Amazon S3 Storage | COMPLETE | YES | S3 FileStorage adapter with versioning-aware delete. |
-| M5 | Amazon RDS Database | COMPLETE | YES | SQLAlchemy RDS metadata repository (files/versions/logs/changes). |
-| M6 | AWS IAM / Security | COMPLETE | YES | IAM policies, API key auth, and security group isolation. |
-| M7 | Bidirectional Synchronization | NOT STARTED | — | Cloud-to-local synchronization. |
-| M8 | Versioning & Conflict Handling | NOT STARTED | — | Version tracking and conflict handling. |
-| M9 | Monitoring, Logging & Alerting | NOT STARTED | — | CloudWatch, CloudTrail, and SNS. |
-| M10 | Frontend Dashboard | NOT STARTED | — | Dashboard consuming backend APIs. |
+---
 
+## Current Status: Module 6 AWS Deployment Pending
+
+The codebase has been updated for **Module 6: AWS IAM & Security**.
+
+**Locally Verified (Completed):**
+*   **Authentication:** `APP_ENV=production` configuration enforces `X-API-Key` authentication on the REST API while keeping `/health` public.
+*   **Agent Header:** The Sync Agent securely reads its configuration and propagates the API key in headers without hardcoding.
+*   **IAM Least Privilege:** Policy templates (`infrastructure/iam_policies/`) correctly restrict S3 actions and use a placeholder for the bucket name.
+*   **Testing:** 113/113 local unit/integration tests pass.
+
+**AWS Configuration (Pending User Action):**
+The infrastructure now must be deployed to a real AWS account using the AWS Console. See `modules/module-06/README.md` for the exact steps to configure S3, IAM Roles, EC2, RDS, and Security Groups.
+
+Module 6 will be considered fully **COMPLETE** once the AWS infrastructure is launched and the end-to-end verification checklist in the Module 6 README is fulfilled.
 
 ## Module Handoffs
 

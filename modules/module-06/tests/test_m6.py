@@ -56,6 +56,7 @@ def test_iam_trust_policy_json_validity() -> None:
 
 
 def test_api_key_authentication_enforcement(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "APP_ENV", "production")
     monkeypatch.setattr(config, "API_KEY", "secret-test-key")
     client = TestClient(app)
 

@@ -1,25 +1,52 @@
 {
+  "_comment": [
+    "EC2 Runtime IAM Policy — CloudAWSProject-101",
+    "",
+    "This policy grants the EC2 backend role the minimum S3 permissions",
+    "required to operate the application at runtime.",
+    "",
+    "BEFORE APPLYING: replace YOUR-BUCKET-NAME with the actual S3 bucket name.",
+    "Example: arn:aws:s3:::my-sync-bucket",
+    "",
+    "Permissions audit:",
+    "  s3:PutObject       — upload file content (POST /sync/upload -> S3FileStorage.put)",
+    "  s3:GetObject       — download file content (future M7 cloud->local sync)",
+    "  s3:DeleteObject    — place delete marker (POST /sync/delete -> S3FileStorage.delete)",
+    "  s3:ListBucket      — required for head_object 404 disambiguation on some SDK versions.",
+    "",
+    "Permissions intentionally EXCLUDED from runtime policy:",
+    "  s3:PutBucketVersioning — setup-only, run once by an admin via backend/s3_setup.py.",
+    "                           Not a runtime application operation.",
+    "  s3:GetBucketVersioning — not called anywhere in the runtime application code.",
+    "  s3:CreateBucket        — buckets are created in AWS Console, never by the app.",
+    "  s3:DeleteBucket        — must never be available to the runtime role.",
+    "  s3:*                   — broad wildcard; never use.",
+    "",
+    "This policy does NOT grant RDS access.  RDS connectivity is controlled by",
+    "the RDS security group (PostgreSQL from EC2 security group only).",
+    "",
+    "Attach this policy to the IAM Role used as the EC2 instance profile.",
+    "See modules/module-06/README.md for the full AWS Console deployment steps."
+  ],
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "S3BucketAccess",
+      "Sid": "S3BucketLevelAccess",
       "Effect": "Allow",
       "Action": [
-        "s3:ListBucket",
-        "s3:GetBucketVersioning",
-        "s3:PutBucketVersioning"
+        "s3:ListBucket"
       ],
-      "Resource": "arn:aws:s3:::cloudawsproject-files-bucket"
+      "Resource": "arn:aws:s3:::YOUR-BUCKET-NAME"
     },
     {
-      "Sid": "S3ObjectAccess",
+      "Sid": "S3ObjectLevelAccess",
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
         "s3:PutObject",
         "s3:DeleteObject"
       ],
-      "Resource": "arn:aws:s3:::cloudawsproject-files-bucket/*"
+      "Resource": "arn:aws:s3:::YOUR-BUCKET-NAME/*"
     }
   ]
 }

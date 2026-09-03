@@ -2,6 +2,11 @@
 api.py — Module 3 HTTP routes.
 
 Implements the REST contract from docs/module-contracts.md.
+
+Module 6 — Security:
+  verify_api_key enforces X-API-Key header on protected endpoints.
+  Enforcement is active only when APP_ENV=production (see backend/config.py).
+  /health is always public (no authentication required).
 """
 
 from __future__ import annotations
@@ -29,10 +34,27 @@ router = APIRouter()
 
 
 def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> None:
-    if config.API_KEY and x_api_key != config.API_KEY:
+    """Verify the X-API-Key header when running in production mode.
+
+    In development mode (APP_ENV=development, the default), this dependency
+    is a no-op — all protected endpoints are accessible without authentication.
+    This is intentional for local testing and pytest.
+
+    In production mode (APP_ENV=production), a non-empty API_KEY must be
+    configured and all protected endpoints require a matching header.
+    """
+    if config.APP_ENV != "production":
+        # Development / test mode — authentication is intentionally disabled.
+        return
+    # Production: API_KEY is guaranteed non-empty by config startup check.
+    if not x_api_key or x_api_key != config.API_KEY:
         raise HTTPException(
             status_code=401,
-            detail={"success": False, "error": "unauthorized", "detail": "Invalid or missing API key"},
+            detail={
+                "success": False,
+                "error": "unauthorized",
+                "detail": "Invalid or missing API key",
+            },
         )
 
 
@@ -40,10 +62,10 @@ def get_service(request: Request) -> SyncService:
     return request.app.state.sync_service
 
 
+# /health is intentionally public — no verify_api_key dependency.
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse()
-
 
 
 @router.post(
@@ -164,4 +186,3 @@ def list_logs(service: SyncService = Depends(get_service)) -> LogsResponse:
 )
 def status(service: SyncService = Depends(get_service)) -> StatusResponse:
     return service.status()
-

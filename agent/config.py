@@ -71,6 +71,11 @@ SYNC_FOLDER: str = _resolve_sync_folder()
 LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO").upper()
 BACKEND_URL: str = os.environ.get("BACKEND_URL", "").strip()
 
+# Module 6 — Security: API key sent as X-API-Key header to the M3 backend.
+# Leave empty for local development (backend must also be running in development mode).
+# Set to the same value configured on the EC2 backend for production deployment.
+API_KEY: str = os.environ.get("API_KEY", "").strip()
+
 # ---------------------------------------------------------------------------
 # Logging (configured once on import)
 # ---------------------------------------------------------------------------
