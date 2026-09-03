@@ -15,6 +15,8 @@ This document defines the interfaces between the 10 project modules. Antigravity
 9. Monitoring, Logging & Alerting
 10. Frontend Dashboard
 
+**Module boundary rule:** AWS infrastructure deployment and verification are part of completing M6's security contract. They do not create a separate M7. M7 remains **Bidirectional Synchronization**.
+
 ## Connection Contracts
 
 ### M1 -> M2: Local File Events
@@ -70,11 +72,15 @@ Minimum logical entities:
 M3 creates/updates these records after synchronization operations and reads them for status, history, and logs.
 
 ### M6 -> AWS Resources: Security Contract
-M6 defines AWS permissions.
+M6 defines and verifies the AWS security boundary.
 
-EC2 should use an IAM role rather than hardcoded AWS access keys wherever practical. Permissions must follow least privilege. RDS should not be publicly exposed unless absolutely necessary.
+M6 completion requires both the local security implementation and real-AWS deployment verification. The implementation must use an EC2 IAM role/instance profile rather than hardcoded AWS access keys, follow least privilege, and keep RDS inaccessible from the public internet.
 
-M6 controls AWS resource permissions; application-level roles are handled separately by the application.
+The EC2-to-S3 policy must be restricted to the actual project bucket and only the S3 actions required by the application. Infrastructure-management permissions such as bucket versioning configuration are not runtime permissions.
+
+The application may use API-key authentication between the Sync Agent and EC2. This is an application-level security layer and is separate from AWS IAM.
+
+M6 controls AWS resource permissions and network security; application-level roles are handled separately by the application.
 
 ### M7: Bidirectional Synchronization Contract
 M7 coordinates both directions:
@@ -127,7 +133,7 @@ The dashboard should display, where implemented:
 
 M1 -> M2 -> M3 -> M4 + M5
 
-M6 supplies AWS permissions around the cloud resources.
+M6 supplies AWS permissions and security controls around the deployed cloud resources.
 M7 and M8 extend the synchronization/versioning behavior across M2/M3/M4/M5.
 M9 monitors and alerts around the system.
 M10 reads project state through M3.
