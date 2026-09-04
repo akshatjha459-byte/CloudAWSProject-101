@@ -217,6 +217,8 @@ class _SyncEventHandler(FileSystemEventHandler):
         with self._lock:
             if raw_event.src_path in self._pending_deletes:
                 del self._pending_deletes[raw_event.src_path]
+            if raw_event.dest_path in self._pending_deletes:
+                del self._pending_deletes[raw_event.dest_path]
         
         src_ignored = _should_ignore(raw_event.src_path)
         dest_ignored = _should_ignore(raw_event.dest_path)

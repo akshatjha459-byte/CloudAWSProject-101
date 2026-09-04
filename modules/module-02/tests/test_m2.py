@@ -452,6 +452,25 @@ class TestWatcherIntegration(unittest.TestCase):
         self.assertEqual(ev.operation, OP_DELETED)
         self.assertEqual(ev.path, "real_delete.txt")
 
+    def test_transient_move_no_duplicate_created_or_deleted(self) -> None:
+        self._clear()
+        path = os.path.join(self._tmpdir, "atomic.txt")
+        _write(path, "content")
+        _wait_for(self._sender, OP_CREATED, timeout=3.0)
+        self._clear()
+        time.sleep(0.1)
+
+        os.unlink(path)
+        tmp_path = path + ".tmp"
+        _write(tmp_path, "replaced")
+        os.rename(tmp_path, path)
+
+        time.sleep(1.5)
+
+        ops = [ev.operation for ev in self._sender.received]
+        self.assertEqual(ops.count(OP_CREATED), 1)
+        self.assertEqual(ops.count(OP_DELETED), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
