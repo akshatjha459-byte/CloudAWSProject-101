@@ -125,3 +125,27 @@ if APP_ENV == "production" and not API_KEY:
         file=sys.stderr,
     )
     sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# Module 9 — Monitoring, Logging & Alerting
+# ---------------------------------------------------------------------------
+# CloudWatch and SNS are optional operational services.  They use the EC2
+# instance role (never hardcoded keys).  Empty topic ARN disables alerting.
+# Monitoring failures must never stop synchronization.
+
+CLOUDWATCH_NAMESPACE: str = _env("CLOUDWATCH_NAMESPACE", "CloudAWSProject/Sync")
+CLOUDWATCH_METRICS_ENABLED: bool = _env("CLOUDWATCH_METRICS_ENABLED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+SNS_ALERT_TOPIC_ARN: str = _env("SNS_ALERT_TOPIC_ARN")
+SNS_ALERTS_ENABLED: bool = _env("SNS_ALERTS_ENABLED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+SNS_SYNC_FAILURE_THRESHOLD: int = int(_env("SNS_SYNC_FAILURE_THRESHOLD", "3") or "3")
+SNS_AUTH_FAILURE_THRESHOLD: int = int(_env("SNS_AUTH_FAILURE_THRESHOLD", "5") or "5")

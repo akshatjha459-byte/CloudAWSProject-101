@@ -24,6 +24,7 @@ from backend.models import (
     VersionRecord,
 )
 from backend.services.conflict import conflict_relative_path, is_conflict_copy_path
+from backend.services.observability import Observability, sanitize_value
 
 
 class SyncValidationError(ValueError):
@@ -50,13 +51,117 @@ class SyncService:
         *,
         storage_adapter_name: str = "memory",
         metadata_adapter_name: str = "memory",
+        observability: Optional[Observability] = None,
     ) -> None:
         self._storage = storage
         self._repo = repository
         self._storage_adapter_name = storage_adapter_name
         self._metadata_adapter_name = metadata_adapter_name
+        self._obs = observability
+
+    def _safe_add_log(self, **kwargs) -> Optional[LogRecord]:
+        """RDS/SYNC_LOGS write that never fails the caller."""
+        try:
+            return self._repo.add_log(**kwargs)
+        except Exception:
+            if self._obs is not None:
+                try:
+                    self._obs.structured.emit(
+                        "ERROR",
+                        "logging.failure",
+                        success=False,
+                        path=kwargs.get("path"),
+                        operation=kwargs.get("operation"),
+                    )
+                except Exception:
+                    pass
+            return None
+
+    def _observe_success(self, operation: str, path: str, result: UploadResult) -> None:
+        if self._obs is None:
+            return
+        try:
+            self._obs.on_file_event(
+                operation=operation, path=path, file_id=result.file.id
+            )
+            self._obs.on_sync_success(
+                operation="CONFLICT" if result.conflict else operation,
+                path=path,
+                file_id=result.file.id,
+                conflict=result.conflict,
+                conflict_path=result.conflict_path,
+                idempotent=result.idempotent,
+            )
+        except Exception:
+            return
+
+    def _observe_delete_success(self, path: str, result: DeleteResult) -> None:
+        if self._obs is None:
+            return
+        try:
+            self._obs.on_file_event(
+                operation="DELETED", path=path, file_id=result.file.id
+            )
+            self._obs.on_sync_success(
+                operation="DELETED",
+                path=path,
+                file_id=result.file.id,
+            )
+        except Exception:
+            return
+
+    def _observe_failure(
+        self, operation: str, path: str, error: str, *, critical: bool
+    ) -> None:
+        safe_error = str(sanitize_value(error))[:500]
+        self._safe_add_log(
+            path=path or "",
+            operation=(operation or "UNKNOWN").upper(),
+            status="FAILURE",
+            error_message=safe_error or None,
+        )
+        if self._obs is None:
+            return
+        try:
+            self._obs.on_sync_failure(
+                operation=operation, path=path or "", error=safe_error, critical=critical
+            )
+        except Exception:
+            return
 
     def upload(
+        self,
+        *,
+        operation: str,
+        path: str,
+        timestamp: str,
+        file_hash: Optional[str] = None,
+        size: Optional[int] = None,
+        dest_path: Optional[str] = None,
+        content: Optional[bytes] = None,
+        base_hash: Optional[str] = None,
+    ) -> UploadResult:
+        try:
+            result = self._upload_impl(
+                operation=operation,
+                path=path,
+                timestamp=timestamp,
+                file_hash=file_hash,
+                size=size,
+                dest_path=dest_path,
+                content=content,
+                base_hash=base_hash,
+            )
+            self._observe_success(operation.upper(), path, result)
+            return result
+        except SyncValidationError as exc:
+            self._observe_failure(operation, path, str(exc), critical=False)
+            raise
+        except Exception as exc:
+            self._observe_failure(operation, path, str(exc), critical=False)
+            raise
+
+    def _upload_impl(
         self,
         *,
         operation: str,
@@ -101,7 +206,7 @@ class SyncService:
             and not existing.deleted
             and existing.current_hash == actual_hash
         ):
-            self._repo.add_log(
+            self._safe_add_log(
                 path=path,
                 operation=operation,
                 status="SUCCESS",
@@ -162,7 +267,7 @@ class SyncService:
         # upsert_file may have reset current_version; re-read after add_version
         file_record = self._repo.get_file_by_id(file_record.id)
         assert file_record is not None
-        self._repo.add_log(
+        self._safe_add_log(
             path=path,
             operation=operation,
             status="SUCCESS",
@@ -228,7 +333,7 @@ class SyncService:
                 timestamp=timestamp,
                 source="local",
             )
-            self._repo.add_log(
+            self._safe_add_log(
                 path=existing.relative_path,
                 operation="CONFLICT",
                 status="SUCCESS",
@@ -277,7 +382,7 @@ class SyncService:
             f"cloud_hash={existing.current_hash}; local_hash={local_hash}; "
             f"operation={operation}"
         )
-        self._repo.add_log(
+        self._safe_add_log(
             path=existing.relative_path,
             operation="CONFLICT",
             status="SUCCESS",
@@ -285,7 +390,7 @@ class SyncService:
             timestamp=timestamp,
             error_message=detail,
         )
-        self._repo.add_log(
+        self._safe_add_log(
             path=conflict_path,
             operation="CONFLICT",
             status="SUCCESS",
@@ -368,7 +473,7 @@ class SyncService:
         )
         file_record = self._repo.get_file_by_id(file_record.id)
         assert file_record is not None
-        self._repo.add_log(
+        self._safe_add_log(
             path=path,
             operation="MOVED",
             status="SUCCESS",
@@ -392,6 +497,18 @@ class SyncService:
 
     def delete(self, request: DeleteRequest) -> DeleteResult:
         path = _normalize_path(request.path)
+        try:
+            result = self._delete_impl(request, path)
+            self._observe_delete_success(path, result)
+            return result
+        except SyncValidationError as exc:
+            self._observe_failure("DELETED", path, str(exc), critical=False)
+            raise
+        except Exception as exc:
+            self._observe_failure("DELETED", path, str(exc), critical=False)
+            raise
+
+    def _delete_impl(self, request: DeleteRequest, path: str) -> DeleteResult:
         self._storage.delete(path)
         existing = self._repo.get_file_by_path(path)
         if existing is None:
@@ -417,7 +534,7 @@ class SyncService:
         )
         file_record = self._repo.get_file_by_id(file_record.id)
         assert file_record is not None
-        self._repo.add_log(
+        self._safe_add_log(
             path=path,
             operation="DELETED",
             status="SUCCESS",
@@ -513,5 +630,6 @@ class SyncService:
                     if self._metadata_adapter_name == "rds"
                     else "in-memory development adapter"
                 ),
+                **(self._obs.status_notes() if self._obs is not None else {}),
             },
         )

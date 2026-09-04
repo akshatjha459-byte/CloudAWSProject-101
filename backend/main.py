@@ -32,6 +32,7 @@ from backend.config import (
     STORAGE_ADAPTER,
 )
 from backend.routes.api import router
+from backend.services.observability import Observability
 from backend.services.sync_service import SyncService
 
 
@@ -74,6 +75,7 @@ def create_app(
     repository=None,
     storage_adapter_name: str | None = None,
     metadata_adapter_name: str | None = None,
+    observability=None,
 ) -> FastAPI:
     """Application factory so tests can inject adapters."""
 
@@ -85,11 +87,15 @@ def create_app(
     if repository is None:
         repository, meta_name = build_metadata_repository(meta_name)
 
+    if observability is None:
+        observability = Observability.from_env()
+
     service = SyncService(
         storage,
         repository,
         storage_adapter_name=adapter_name,
         metadata_adapter_name=meta_name,
+        observability=observability,
     )
 
     app = FastAPI(
@@ -98,6 +104,7 @@ def create_app(
         version="0.3.0",
     )
     app.state.sync_service = service
+    app.state.observability = observability
     app.include_router(router)
 
     @app.exception_handler(RequestValidationError)
@@ -128,6 +135,12 @@ def create_app(
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         if isinstance(exc, HTTPException):
             return await http_exception_handler(request, exc)
+        obs = getattr(request.app.state, "observability", None)
+        if obs is not None:
+            try:
+                obs.on_application_error(error=type(exc).__name__, event="application.error")
+            except Exception:
+                pass
         return JSONResponse(
             status_code=500,
             content={

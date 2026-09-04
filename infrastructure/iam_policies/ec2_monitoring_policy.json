@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    "EC2 Runtime IAM Policy — Module 9 monitoring and alerting",
+    "",
+    "Attach this customer-managed policy to CloudAWSProject-EC2-Role in addition",
+    "to the existing S3 policy.  It grants only the CloudWatch and SNS actions",
+    "used by backend/services/observability.py.",
+    "",
+    "BEFORE APPLYING:",
+    "  1. Keep the CloudWatch namespace condition aligned with CLOUDWATCH_NAMESPACE",
+    "     (default CloudAWSProject/Sync).",
+    "  2. Replace YOUR-ACCOUNT-ID and YOUR-SNS-TOPIC-NAME with the real SNS topic.",
+    "",
+    "Permissions audit:",
+    "  cloudwatch:PutMetricData — emit application metrics (SyncOperations, etc.).",
+    "  sns:Publish              — publish critical/repeated-failure alerts.",
+    "",
+    "Intentionally excluded:",
+    "  cloudwatch:* wildcards, sns:CreateTopic, sns:Subscribe, logs:* (app logs",
+    "  stay on the process/journald + RDS SYNC_LOGS; CloudTrail is account-level)."
+  ],
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudWatchPutMetricData",
+      "Effect": "Allow",
+      "Action": "cloudwatch:PutMetricData",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "cloudwatch:namespace": "CloudAWSProject/Sync"
+        }
+      }
+    },
+    {
+      "Sid": "SnsPublishAlerts",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:ap-south-1:YOUR-ACCOUNT-ID:YOUR-SNS-TOPIC-NAME"
+    }
+  ]
+}

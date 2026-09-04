@@ -33,7 +33,10 @@ from backend.services.sync_service import SyncNotFoundError, SyncService, SyncVa
 router = APIRouter()
 
 
-def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> None:
+def verify_api_key(
+    request: Request,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+) -> None:
     """Verify the X-API-Key header when running in production mode.
 
     In development mode (APP_ENV=development, the default), this dependency
@@ -48,6 +51,12 @@ def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -
         return
     # Production: API_KEY is guaranteed non-empty by config startup check.
     if not x_api_key or x_api_key != config.API_KEY:
+        obs = getattr(request.app.state, "observability", None)
+        if obs is not None:
+            try:
+                obs.on_auth_failure()
+            except Exception:
+                pass
         raise HTTPException(
             status_code=401,
             detail={
@@ -56,6 +65,12 @@ def verify_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -
                 "detail": "Invalid or missing API key",
             },
         )
+    obs = getattr(request.app.state, "observability", None)
+    if obs is not None:
+        try:
+            obs.alerts.record_auth_success()
+        except Exception:
+            pass
 
 
 def get_service(request: Request) -> SyncService:

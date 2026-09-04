@@ -218,7 +218,10 @@ Minimum conflict behavior:
 
 ### M9 — Monitoring, Logging & Alerting
 
-M9 owns CloudWatch monitoring/logging, CloudTrail AWS API auditing and SNS failure/security notification. Application synchronization logs and CloudTrail audit records remain separate concepts.
+M9 owns CloudWatch application metrics, structured process logging, and SNS failure/security notification. Application synchronization logs in RDS (`SYNC_LOGS`) and CloudTrail AWS API audit records remain separate concepts.
+
+CloudTrail is an AWS-account audit service (console/account configuration), not an application logging pipeline. The FastAPI backend emits JSON structured logs and optional `PutMetricData` / `sns:Publish` using the EC2 instance role. Monitoring failures must not fail synchronization.
+
 
 ### M10 — Frontend Dashboard
 

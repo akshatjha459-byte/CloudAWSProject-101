@@ -118,13 +118,18 @@ Conflict handling (Zero Silent Overwrite):
 6. **Agent Poller:** Cloud poller checks for local divergence against `SyncState` before applying cloud changes, creating local conflict copies if needed.
 
 ### M9: Monitoring, Logging and Alerting Contract
-M9 operates around the backend/AWS layer.
+M9 operates around the backend/AWS layer without changing the M1–M8 sync protocol.
 
-CloudWatch handles meaningful application/system monitoring and logs.
-CloudTrail provides AWS API audit activity.
-SNS provides failure/security notifications.
+Structured application logs (JSON) and RDS `sync_logs` record file create/modify/delete, sync success/failure, conflicts, authentication failures, and unexpected errors. Secrets are never logged.
 
-Application synchronization logs in RDS and CloudTrail audit records are separate concepts and must not be conflated.
+CloudWatch (`CloudAWSProject/Sync`) records `SyncOperations`, `SyncSuccess`, `SyncFailure`, `ConflictEvents`, `ApplicationErrors`, and `AuthFailures`. Metrics use the EC2 instance role.
+
+SNS publishes only for defined conditions: repeated sync failures (threshold), unhandled critical application errors, and repeated production authentication failures. Successful syncs do not send SNS messages.
+
+CloudTrail remains AWS API audit activity at the account level. It is not a substitute for `SYNC_LOGS`.
+
+CloudWatch and SNS failures must not fail synchronization. `GET /health` and `GET /status` keep their existing fields; status `notes` may include monitoring flags.
+
 
 ### M10 <-> M3: Dashboard/API Contract
 M10 communicates with M3 through the REST API. M10 must not connect directly to RDS.
