@@ -424,6 +424,34 @@ class TestWatcherIntegration(unittest.TestCase):
     def test_watcher_is_alive(self) -> None:
         self.assertTrue(self._watcher.is_alive())
 
+    def test_transient_delete_suppressed_when_file_reappears(self) -> None:
+        self._clear()
+        path = os.path.join(self._tmpdir, "transient.txt")
+        _write(path, "content")
+        _wait_for(self._sender, OP_CREATED, timeout=3.0)
+        self._clear()
+        time.sleep(0.1)
+        os.unlink(path)
+        time.sleep(0.1)
+        _write(path, "replaced content")
+        time.sleep(1.5)
+        ops = [ev.operation for ev in self._sender.received]
+        self.assertNotIn(OP_DELETED, ops)
+        self.assertIn(OP_CREATED, ops)
+
+    def test_genuine_delete_propagates_after_debounce(self) -> None:
+        self._clear()
+        path = os.path.join(self._tmpdir, "real_delete.txt")
+        _write(path, "content")
+        _wait_for(self._sender, OP_CREATED, timeout=3.0)
+        self._clear()
+        time.sleep(0.1)
+        os.unlink(path)
+        ev = _wait_for(self._sender, OP_DELETED, timeout=5.0)
+        self.assertIsNotNone(ev, "Expected DELETED event but none received within timeout")
+        self.assertEqual(ev.operation, OP_DELETED)
+        self.assertEqual(ev.path, "real_delete.txt")
+
 
 if __name__ == "__main__":
     unittest.main()

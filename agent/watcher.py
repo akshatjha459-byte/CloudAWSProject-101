@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+import threading
 from pathlib import Path
 
 from watchdog.events import (
@@ -81,6 +83,11 @@ class _SyncEventHandler(FileSystemEventHandler):
         super().__init__()
         self._sync_folder = sync_folder
         self._sender = sender
+        self._pending_deletes: dict[str, float] = {}
+        self._delete_debounce_seconds = 1.0
+        self._lock = threading.Lock()
+        self._flush_thread = threading.Thread(target=self._flush_loop, daemon=True)
+        self._flush_thread.start()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -154,6 +161,26 @@ class _SyncEventHandler(FileSystemEventHandler):
         except Exception as exc:  # pylint: disable=broad-except
             logger.error("Sender raised an exception for event %s: %s", event.operation, exc)
 
+    def _flush_loop(self) -> None:
+        while True:
+            time.sleep(1.0)
+            self._process_pending_deletes()
+
+    def _process_pending_deletes(self) -> None:
+        now = time.monotonic()
+        to_dispatch: list[str] = []
+        with self._lock:
+            for path, ts in list(self._pending_deletes.items()):
+                if now - ts >= self._delete_debounce_seconds:
+                    to_dispatch.append(path)
+            for path in to_dispatch:
+                del self._pending_deletes[path]
+        for path in to_dispatch:
+            if not os.path.exists(path):
+                self._dispatch(OP_DELETED, path)
+            else:
+                self._dispatch(OP_CREATED, path)
+
     # ------------------------------------------------------------------
     # watchdog callbacks (file events only — directory events ignored)
     # ------------------------------------------------------------------
@@ -161,21 +188,35 @@ class _SyncEventHandler(FileSystemEventHandler):
     def on_created(self, raw_event: FileCreatedEvent | DirCreatedEvent) -> None:
         if isinstance(raw_event, DirCreatedEvent):
             return
+        self._process_pending_deletes()
+        with self._lock:
+            if raw_event.src_path in self._pending_deletes:
+                del self._pending_deletes[raw_event.src_path]
         self._dispatch(OP_CREATED, raw_event.src_path)
 
     def on_modified(self, raw_event: FileModifiedEvent | DirModifiedEvent) -> None:
         if isinstance(raw_event, DirModifiedEvent):
             return
+        self._process_pending_deletes()
+        with self._lock:
+            if raw_event.src_path in self._pending_deletes:
+                del self._pending_deletes[raw_event.src_path]
         self._dispatch(OP_MODIFIED, raw_event.src_path)
 
     def on_deleted(self, raw_event: FileDeletedEvent | DirDeletedEvent) -> None:
         if isinstance(raw_event, DirDeletedEvent):
             return
-        self._dispatch(OP_DELETED, raw_event.src_path)
+        with self._lock:
+            self._pending_deletes[raw_event.src_path] = time.monotonic()
 
     def on_moved(self, raw_event: FileMovedEvent | DirMovedEvent) -> None:
         if isinstance(raw_event, DirMovedEvent):
             return
+        
+        self._process_pending_deletes()
+        with self._lock:
+            if raw_event.src_path in self._pending_deletes:
+                del self._pending_deletes[raw_event.src_path]
         
         src_ignored = _should_ignore(raw_event.src_path)
         dest_ignored = _should_ignore(raw_event.dest_path)
@@ -183,13 +224,10 @@ class _SyncEventHandler(FileSystemEventHandler):
         if src_ignored and dest_ignored:
             return
         elif src_ignored and not dest_ignored:
-            # Appeared from an ignored path (e.g., .tmp rename) -> CREATED
             self._dispatch(OP_CREATED, raw_event.dest_path)
         elif not src_ignored and dest_ignored:
-            # Moved to an ignored path -> DELETED
             self._dispatch(OP_DELETED, raw_event.src_path)
         else:
-            # Normal move
             self._dispatch(OP_MOVED, raw_event.src_path, raw_event.dest_path)
 
 
