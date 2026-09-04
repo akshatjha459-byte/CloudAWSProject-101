@@ -107,6 +107,7 @@ class ChangeRecord(BaseModel):
     operation: str
     hash: Optional[str] = None
     size: Optional[int] = None
+    version_number: Optional[int] = None
     timestamp: str
 
 

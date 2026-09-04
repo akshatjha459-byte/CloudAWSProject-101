@@ -247,8 +247,11 @@ class HttpEventSender(EventSender):
             logger.error("Error fetching changes: %s", exc)
         return []
 
-    def download_file(self, file_id: int) -> Optional[bytes]:
+    def download_file(self, file_id: int, version_number: Optional[int] = None) -> Optional[bytes]:
         url = f"{self.backend_url}/files/{file_id}/content"
+        if version_number is not None:
+            import urllib.parse
+            url += "?version=" + urllib.parse.quote(str(version_number))
         request = Request(url, headers={"X-API-Key": self.api_key} if self.api_key else {})
         try:
             with urlopen(request, timeout=self.timeout) as response:

@@ -129,7 +129,8 @@ class CloudPoller:
                     return False
             else:
                  logger.info("Cloud MOVED %s to %s, but local missing, downloading...", path, dest_path_str)
-                 content = self.sender.download_file(file_id)
+                 version_number = change.get("version_number")
+                 content = self.sender.download_file(file_id, version_number=version_number)
                  if content is not None:
                      try:
                          dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -179,7 +180,8 @@ class CloudPoller:
                         )
 
             logger.info("Cloud %s %s, downloading...", operation, path)
-            content = self.sender.download_file(file_id)
+            version_number = change.get("version_number")
+            content = self.sender.download_file(file_id, version_number=version_number)
             if content is not None:
                 try:
                     local_path.parent.mkdir(parents=True, exist_ok=True)

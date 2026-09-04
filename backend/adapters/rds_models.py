@@ -74,4 +74,5 @@ class ChangeRow(Base):
     operation: Mapped[str] = mapped_column(String(32), nullable=False)
     hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     timestamp: Mapped[str] = mapped_column(String(32), nullable=False, index=True)

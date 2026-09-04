@@ -1,5 +1,6 @@
 import os
 import json
+import hashlib
 import pytest
 from pathlib import Path
 
@@ -16,7 +17,7 @@ class MockSender(HttpEventSender):
     def get_changes(self, since=None):
         return self.changes
         
-    def download_file(self, file_id):
+    def download_file(self, file_id, version_number=None):
         return self.downloads.get(file_id)
 
 def test_sync_state_persistence(tmp_path):
@@ -210,3 +211,136 @@ def test_agent_restart_after_partial_processing(tmp_path):
     assert (tmp_path / "A.txt").read_bytes() == b"A"
     assert poller.state.get_last_sync_timestamp() == "2026-09-04T00:00:01Z"
     assert poller.state.get_file_hash("A.txt") == "hashA"
+
+
+def test_historical_created_replay_after_delete(tmp_path):
+    from backend.main import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app()
+    client = TestClient(app, raise_server_exceptions=False)
+
+    content = b"hello there, this is the demo for r.txt"
+    file_hash = hashlib.sha256(content).hexdigest()
+
+    upload = client.post(
+        "/sync/upload",
+        data={
+            "operation": "CREATED",
+            "path": "r.txt",
+            "timestamp": "2026-09-04T21:50:00Z",
+            "hash": file_hash,
+            "size": str(len(content)),
+        },
+        files={"file": ("r.txt", content, "application/octet-stream")},
+    )
+    assert upload.status_code == 200
+    file_id = upload.json()["file"]["id"]
+
+    client.post(
+        "/sync/delete",
+        json={
+            "operation": "DELETED",
+            "path": "r.txt",
+            "hash": file_hash,
+            "size": str(len(content)),
+            "timestamp": "2026-09-04T21:51:00Z",
+        },
+    )
+
+    class ApiSender(HttpEventSender):
+        def __init__(self):
+            super().__init__("http://dummy", str(tmp_path))
+
+        def get_changes(self, since=None):
+            return client.get("/sync/changes").json()["changes"]
+
+        def download_file(self, file_id, version_number=None):
+            params = {"version": version_number} if version_number is not None else {}
+            resp = client.get(f"/files/{file_id}/content", params=params)
+            if resp.status_code == 200:
+                return resp.content
+            return None
+
+    poller = CloudPoller(ApiSender(), str(tmp_path), interval=1)
+    poller._poll()
+
+    assert poller.state.get_last_sync_timestamp() == "2026-09-04T21:51:00Z"
+    downloaded = client.get(f"/files/{file_id}/content", params={"version": 1}).content
+    assert downloaded == content
+
+
+def test_historical_version_replay_after_delete(tmp_path):
+    from backend.main import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app()
+    client = TestClient(app, raise_server_exceptions=False)
+
+    v1 = b"version-one"
+    v2 = b"version-two"
+    h1 = hashlib.sha256(v1).hexdigest()
+    h2 = hashlib.sha256(v2).hexdigest()
+
+    first = client.post(
+        "/sync/upload",
+        data={
+            "operation": "CREATED",
+            "path": "doc.txt",
+            "timestamp": "2026-09-04T21:00:00Z",
+            "hash": h1,
+            "size": str(len(v1)),
+        },
+        files={"file": ("doc.txt", v1, "application/octet-stream")},
+    )
+    assert first.status_code == 200
+    file_id = first.json()["file"]["id"]
+
+    client.post(
+        "/sync/upload",
+        data={
+            "operation": "MODIFIED",
+            "path": "doc.txt",
+            "timestamp": "2026-09-04T21:01:00Z",
+            "hash": h2,
+            "size": str(len(v2)),
+            "base_hash": h1,
+        },
+        files={"file": ("doc.txt", v2, "application/octet-stream")},
+    )
+
+    client.post(
+        "/sync/delete",
+        json={
+            "operation": "DELETED",
+            "path": "doc.txt",
+            "hash": h2,
+            "size": str(len(v2)),
+            "timestamp": "2026-09-04T21:02:00Z",
+        },
+    )
+
+    class ApiSender(HttpEventSender):
+        def __init__(self):
+            super().__init__("http://dummy", str(tmp_path))
+
+        def get_changes(self, since=None):
+            return client.get("/sync/changes").json()["changes"]
+
+        def download_file(self, file_id, version_number=None):
+            params = {"version": version_number} if version_number is not None else {}
+            resp = client.get(f"/files/{file_id}/content", params=params)
+            if resp.status_code == 200:
+                return resp.content
+            return None
+
+    poller = CloudPoller(ApiSender(), str(tmp_path), interval=1)
+    poller._poll()
+
+    assert poller.state.get_last_sync_timestamp() == "2026-09-04T21:02:00Z"
+
+    v1_download = client.get(f"/files/{file_id}/content", params={"version": 1}).content
+    assert v1_download == v1
+
+    v2_download = client.get(f"/files/{file_id}/content", params={"version": 2}).content
+    assert v2_download == v2

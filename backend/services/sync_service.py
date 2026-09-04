@@ -280,6 +280,7 @@ class SyncService:
             file_id=file_record.id,
             file_hash=actual_hash,
             size=actual_size,
+            version_number=version.version_number,
             timestamp=timestamp,
         )
         return UploadResult(
@@ -404,6 +405,7 @@ class SyncService:
             file_id=conflict_file.id,
             file_hash=local_hash,
             size=local_size,
+            version_number=version.version_number,
             timestamp=timestamp,
         )
         return UploadResult(
@@ -487,6 +489,7 @@ class SyncService:
             dest_path=dest_path,
             file_hash=file_hash,
             size=size,
+            version_number=version.version_number,
             timestamp=timestamp,
         )
         return UploadResult(
@@ -524,7 +527,7 @@ class SyncService:
         else:
             file_record = self._repo.mark_deleted(existing.id, timestamp=request.timestamp)
 
-        self._repo.add_version(
+        version = self._repo.add_version(
             file_record.id,
             operation="DELETED",
             file_hash=request.hash,
@@ -547,6 +550,7 @@ class SyncService:
             file_id=file_record.id,
             file_hash=request.hash,
             size=request.size,
+            version_number=version.version_number,
             timestamp=request.timestamp,
         )
         return DeleteResult(message="deleted", file=file_record)

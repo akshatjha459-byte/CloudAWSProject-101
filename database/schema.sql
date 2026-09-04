@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS sync_changes (
     operation VARCHAR(32) NOT NULL,
     hash VARCHAR(64),
     size INTEGER,
+    version_number INTEGER,
     timestamp VARCHAR(32) NOT NULL
 );
 

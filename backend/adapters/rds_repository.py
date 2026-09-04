@@ -102,6 +102,7 @@ def _to_change(row: ChangeRow) -> ChangeRecord:
         operation=row.operation,
         hash=row.hash,
         size=row.size,
+        version_number=row.version_number,
         timestamp=row.timestamp,
     )
 
@@ -345,6 +346,7 @@ class RdsMetadataRepository(MetadataRepository):
         dest_path: Optional[str] = None,
         file_hash: Optional[str] = None,
         size: Optional[int] = None,
+        version_number: Optional[int] = None,
         timestamp: Optional[str] = None,
     ) -> ChangeRecord:
         with self._session() as session:
@@ -355,6 +357,7 @@ class RdsMetadataRepository(MetadataRepository):
                 operation=operation,
                 hash=file_hash,
                 size=size,
+                version_number=version_number,
                 timestamp=timestamp or _utc_now(),
             )
             session.add(row)

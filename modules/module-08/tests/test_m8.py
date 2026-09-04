@@ -197,7 +197,7 @@ def test_07_m7_bidirectional_synchronization_remains_functional(tmp_path):
         def get_changes(self, since=None):
             return self.changes
 
-        def download_file(self, file_id):
+        def download_file(self, file_id, version_number=None):
             self.downloaded = True
             return b"should-not-download"
 
@@ -369,7 +369,7 @@ def test_14_no_synchronization_loops_are_introduced(client, tmp_path):
         def get_changes(self, since=None):
             return client.get("/sync/changes").json()["changes"]
 
-        def download_file(self, fid):
+        def download_file(self, fid, version_number=None):
             return client.get(f"/files/{fid}/content").content
 
     poller = CloudPoller(ApiSender(), str(tmp_path), interval=1)
@@ -422,7 +422,7 @@ def test_poller_conflict_does_not_overwrite_local_bytes(tmp_path):
         def get_changes(self, since=None):
             return self.changes
 
-        def download_file(self, file_id):
+        def download_file(self, file_id, version_number=None):
             return self.downloads.get(file_id)
 
     poller = CloudPoller(MockSender(), str(tmp_path), interval=1)

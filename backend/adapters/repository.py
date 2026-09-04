@@ -116,6 +116,7 @@ class MetadataRepository(abc.ABC):
         dest_path: Optional[str] = None,
         file_hash: Optional[str] = None,
         size: Optional[int] = None,
+        version_number: Optional[int] = None,
         timestamp: Optional[str] = None,
     ) -> ChangeRecord:
         ...
@@ -315,6 +316,7 @@ class MemoryMetadataRepository(MetadataRepository):
         dest_path: Optional[str] = None,
         file_hash: Optional[str] = None,
         size: Optional[int] = None,
+        version_number: Optional[int] = None,
         timestamp: Optional[str] = None,
     ) -> ChangeRecord:
         self._change_seq += 1
@@ -326,6 +328,7 @@ class MemoryMetadataRepository(MetadataRepository):
             operation=operation,
             hash=file_hash,
             size=size,
+            version_number=version_number,
             timestamp=timestamp or _utc_now(),
         )
         self._changes.append(record)
