@@ -255,6 +255,43 @@
     }
   }
 
+  async function downloadVersion(fileId, versionNumber, filename) {
+    try {
+      const url = `${FILES_URL}/${encodeURIComponent(fileId)}/content?version=${encodeURIComponent(versionNumber)}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/octet-stream',
+          'X-API-Key': apiKey,
+        },
+      });
+
+      if (response.status === 401) {
+        handleUnauthorized();
+        throw new Error('Unauthorized');
+      }
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename || `file-v${versionNumber}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      if (err.message !== 'Unauthorized') {
+        showError(`Download failed: ${err.message}`);
+      }
+    }
+  }
+
   async function openVersions(fileId, relativePath) {
     els.modalTitle.textContent = `Version History: ${relativePath}`;
     els.versionsTableBody.innerHTML = '<tr><td colspan="7">Loading...</td></tr>';
@@ -269,11 +306,21 @@
 
       els.versionsTableBody.innerHTML = '';
       const fragment = document.createDocumentFragment();
+      const filename = relativePath.split('/').pop() || 'downloaded-file';
       data.versions.forEach((version) => {
         const tr = document.createElement('tr');
         const conflictBadge = version.is_conflict
           ? '<span class="badge badge-danger">conflict</span>'
           : '<span class="badge badge-muted">no</span>';
+        const downloadBtn = document.createElement('button');
+        downloadBtn.type = 'button';
+        downloadBtn.className = 'btn-small';
+        downloadBtn.textContent = 'Download';
+        downloadBtn.addEventListener('click', (event) => {
+          event.stopPropagation();
+          downloadVersion(fileId, version.version_number, filename);
+        });
+
         tr.innerHTML = `
           <td>${escapeHtml(version.version_number)}</td>
           <td>${escapeHtml(version.operation)}</td>
@@ -281,10 +328,9 @@
           <td>${escapeHtml(formatBytes(version.size))}</td>
           <td>${escapeHtml(version.created_at)}</td>
           <td>${conflictBadge}</td>
-          <td>
-            <a class="btn-small" href="${API_BASE}/files/${encodeURIComponent(fileId)}/content?version=${encodeURIComponent(version.version_number)}" download>Download</a>
-          </td>
+          <td></td>
         `;
+        tr.lastElementChild.appendChild(downloadBtn);
         fragment.appendChild(tr);
       });
       els.versionsTableBody.appendChild(fragment);
@@ -307,6 +353,7 @@
       els.authStatus.textContent = value ? 'Saved' : 'Cleared';
       if (value) {
         els.authBanner.classList.add('hidden');
+        els.mainContent.classList.remove('hidden');
         refreshAll();
       }
     });
