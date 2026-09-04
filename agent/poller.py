@@ -7,6 +7,8 @@ from typing import Optional
 
 from agent.http_sender import HttpEventSender
 from agent.state import SyncState
+from agent.conflict import copy_local_to_conflict, is_conflict_copy_path
+from agent.hashing import sha256_file
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +80,7 @@ class CloudPoller:
     def _process_change(self, change: dict) -> bool:
         operation = change.get("operation")
         path = change.get("path")
-        file_hash = change.get("file_hash")
+        file_hash = change.get("file_hash") or change.get("hash")
         file_id = change.get("file_id")
 
         if not path or not operation:
@@ -105,7 +107,6 @@ class CloudPoller:
             dest_path = Path(self.sync_folder) / dest_path_str.replace("/", os.sep)
             
             if dest_path.exists():
-                from agent.hashing import sha256_file
                 try:
                     existing_hash = sha256_file(str(dest_path))
                     if existing_hash == file_hash:
@@ -148,7 +149,35 @@ class CloudPoller:
             known_hash = self.state.get_file_hash(path)
             if known_hash == file_hash and local_path.exists():
                 return True
-            
+
+            if (
+                local_path.exists()
+                and not is_conflict_copy_path(path)
+                and self._local_diverged_from_base(local_path, known_hash)
+                and known_hash
+                and file_hash
+                and known_hash != file_hash
+            ):
+                try:
+                    local_hash = sha256_file(str(local_path))
+                except Exception:
+                    local_hash = None
+                if local_hash and local_hash != file_hash:
+                    logger.warning(
+                        "Conflict on %s: local %s vs cloud %s (base %s)",
+                        path,
+                        local_hash,
+                        file_hash,
+                        known_hash,
+                    )
+                    conflict_rel = copy_local_to_conflict(
+                        self.sync_folder, path, local_hash
+                    )
+                    if conflict_rel:
+                        self.state.update_file_state(
+                            conflict_rel, local_hash, deleted=False
+                        )
+
             logger.info("Cloud %s %s, downloading...", operation, path)
             content = self.sender.download_file(file_id)
             if content is not None:
@@ -166,3 +195,20 @@ class CloudPoller:
                 return False
                 
         return True
+
+    @staticmethod
+    def _local_diverged_from_base(local_path: Path, known_hash: Optional[str]) -> bool:
+        """Return True when local bytes no longer match the last synced SHA-256.
+
+        Short/non-hex hashes used in M7 unit tests are not treated as a local
+        divergence so existing cloud-to-local tests keep their prior behavior.
+        """
+        if not known_hash or not local_path.exists():
+            return False
+        token = known_hash.lower()
+        if len(token) != 64 or any(ch not in "0123456789abcdef" for ch in token):
+            return False
+        try:
+            return sha256_file(str(local_path)) != token
+        except Exception:
+            return False

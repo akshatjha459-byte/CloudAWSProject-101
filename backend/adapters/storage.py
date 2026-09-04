@@ -35,8 +35,12 @@ class FileStorage(abc.ABC):
         """Store or replace object content at *key*."""
 
     @abc.abstractmethod
-    def get(self, key: str) -> Optional[bytes]:
-        """Return object bytes, or None if missing."""
+    def get(self, key: str, version_id: Optional[str] = None) -> Optional[bytes]:
+        """Return object bytes, or None if missing.
+
+        When *version_id* is provided, return that stored version rather than
+        the current object (S3 Versioning / in-memory history).
+        """
 
     @abc.abstractmethod
     def delete(self, key: str) -> None:
@@ -64,17 +68,22 @@ class MemoryFileStorage(FileStorage):
     def __init__(self) -> None:
         self._objects: dict[str, bytes] = {}
         self._versions: dict[str, int] = {}
+        self._history: dict[str, dict[str, bytes]] = {}
 
     def put(self, key: str, content: bytes) -> StoragePutResult:
         self._versions[key] = self._versions.get(key, 0) + 1
+        version_id = str(self._versions[key])
         self._objects[key] = content
+        self._history.setdefault(key, {})[version_id] = content
         return StoragePutResult(
             key=key,
-            version_id=str(self._versions[key]),
+            version_id=version_id,
             size=len(content),
         )
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str, version_id: Optional[str] = None) -> Optional[bytes]:
+        if version_id:
+            return self._history.get(key, {}).get(str(version_id))
         return self._objects.get(key)
 
     def delete(self, key: str) -> None:

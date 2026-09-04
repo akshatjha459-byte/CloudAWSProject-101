@@ -81,6 +81,7 @@ async def sync_upload(
     hash: Optional[str] = Form(None),
     size: Optional[int] = Form(None),
     dest_path: Optional[str] = Form(None),
+    base_hash: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     service: SyncService = Depends(get_service),
 ) -> UploadResult:
@@ -96,6 +97,7 @@ async def sync_upload(
             size=size,
             dest_path=dest_path,
             content=content,
+            base_hash=base_hash,
         )
     except SyncValidationError as exc:
         raise HTTPException(
@@ -158,10 +160,14 @@ from fastapi.responses import Response
 )
 def download_file(
     file_id: int,
+    version: Optional[int] = Query(
+        default=None,
+        description="Application version_number from FILE_VERSIONS; omit for current content.",
+    ),
     service: SyncService = Depends(get_service),
 ) -> Response:
     try:
-        content = service.download(file_id)
+        content = service.download(file_id, version_number=version)
         return Response(content=content, media_type="application/octet-stream")
     except SyncNotFoundError as exc:
         raise HTTPException(

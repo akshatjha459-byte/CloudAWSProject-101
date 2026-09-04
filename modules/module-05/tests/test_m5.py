@@ -61,8 +61,16 @@ class FakeS3Client:
         versions = self.objects.get(key) or []
         return versions[-1] if versions else None
 
-    def get_object(self, Bucket: str, Key: str) -> dict:
-        current = self._current(Key)
+    def get_object(self, Bucket: str, Key: str, VersionId: Optional[str] = None) -> dict:
+        versions = self.objects.get(Key) or []
+        current = None
+        if VersionId:
+            for item in versions:
+                if item["version_id"] == VersionId:
+                    current = item
+                    break
+        else:
+            current = self._current(Key)
         if current is None or current["delete_marker"]:
             raise _client_error("NoSuchKey")
         return {"Body": io.BytesIO(current["body"]), "VersionId": current["version_id"]}

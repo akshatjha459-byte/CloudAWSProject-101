@@ -13,13 +13,13 @@ Update progress only after verification. Do not redesign architecture or silentl
 
 ## Overall Status
 
-**Current module:** M7 — Bidirectional Synchronization
+**Current module:** M8 — Versioning & Conflict Handling
 
-**Overall phase:** M7 COMPLETE — ready to begin Module 8
+**Overall phase:** M8 COMPLETE — ready to begin Module 9
 
 **Last verified:** M6 AWS infrastructure, EC2 deployment, IAM/security controls, application authentication, RDS connectivity/schema, local Agent -> EC2 -> S3/RDS end-to-end synchronization, browser EC2 Instance Connect access, and persistent FastAPI service configuration.
 
-**Next action:** Implement and verify Module 8: Versioning & Conflict Handling.
+**Next action:** Implement and verify Module 9: Monitoring, Logging & Alerting.
 
 ## Canonical Module Sequence
 
@@ -32,7 +32,7 @@ Update progress only after verification. Do not redesign architecture or silentl
 | M5 | Amazon RDS Database | **COMPLETE** |
 | M6 | AWS IAM / Security | **COMPLETE** |
 | M7 | Bidirectional Synchronization | **COMPLETE** |
-| M8 | Versioning & Conflict Handling | **NOT STARTED** |
+| M8 | Versioning & Conflict Handling | **COMPLETE** |
 | M9 | Monitoring, Logging & Alerting | **NOT STARTED** |
 | M10 | Frontend Dashboard | **NOT STARTED** |
 
@@ -90,6 +90,24 @@ Update progress only after verification. Do not redesign architecture or silentl
 - Runtime passwords and API keys are intentionally not recorded in this progress file or `docs/AWSexplainer.md`.
 
 ## Completed Modules
+
+### M8 — Versioning & Conflict Handling
+
+**Status:** COMPLETE
+
+**Responsibility:** Implement normal file versioning, recoverable historical versions, version history API, deterministic 3-way conflict detection, non-destructive conflict preservation, and loop prevention.
+
+**What was implemented and verified:**
+- Extended `backend/adapters/storage.py` and `backend/adapters/s3_storage.py` to support historical version retrieval via `get(key, version_id)` using S3 object versioning (`VersionId`).
+- Extended `backend/adapters/repository.py` and `backend/adapters/rds_repository.py` with `set_file_status()` and `is_conflict` tracking in `VersionRecord`.
+- Implemented `GET /files/{file_id}/versions` returning comprehensive version history metadata.
+- Implemented `GET /files/{file_id}/content?version={version_number}` returning historical version payload.
+- Added `base_hash` propagation across `agent/events.py`, `agent/watcher.py`, `agent/http_sender.py`, and `backend/routes/api.py` for 3-way conflict detection.
+- Implemented deterministic conflict preservation in `backend/services/sync_service.py` via `_preserve_conflict()`: original canonical file remains intact (marked `status="conflict"`), while divergent local content is saved under `{stem}.conflict-{local_hash[:12]}.{ext}` in S3 and RDS, logged to `sync_logs` with `operation="CONFLICT"`, and broadcasted to `sync_changes` (`operation="CREATED"`).
+- Added `CloudPoller` local divergence detection in `agent/poller.py` to create conflict copies before overwriting local files during cloud updates.
+- Ensured full idempotency: retried uploads and retried conflicts do not create duplicate files or version records.
+- Added 17 unit/integration tests in `modules/module-08/tests/test_m8.py` covering all 14 required verification areas.
+- Full project test suite passes: 140 passed, 2 skipped, 1 warning.
 
 ### M7 — Bidirectional Synchronization
 
@@ -151,10 +169,6 @@ Established the portable `organization/files/` source directory, environment con
 
 Begins after M6 AWS deployment/verification. M7 will implement cloud-to-local synchronization while preserving the existing local-to-cloud path and M1-M6 contracts.
 
-### M8 — Versioning & Conflict Handling
-
-Will build on S3 Versioning, RDS version records, hashes and synchronization state. Conflicts must never be silently overwritten.
-
 ### M9 — Monitoring, Logging & Alerting
 
 Will add CloudWatch monitoring/logging, CloudTrail audit verification and SNS failure/security notification.
@@ -165,6 +179,7 @@ Will expose system state through the M3 REST API. The dashboard must not connect
 
 ## Verification History
 
+- **2026-09-04 — M8:** 140 tests passed, 2 skipped, 1 warning (17 new M8 tests covering all 14 required verification areas). Versioning, recoverable history, version history API, 3-way conflict detection, non-destructive conflict preservation, conflict copying, and loop prevention verified.
 - **2026-09-04 — M7:** 123 tests passed; true bidirectional synchronization hardened. Cloud checkpointing redesigned to prevent skipping failed changes or dropping identical timestamps. MOVED operation handling fortified against partial failures.
 - **2026-09-04 — M6:** Real AWS deployment, end-to-end verification, browser EC2 Instance Connect access, and persistent FastAPI service PASS. Verified EC2 IAM-role S3 access, FastAPI deployment, EC2-to-RDS connectivity, RDS schema creation, production API-key authentication (401/200), local Agent -> EC2 -> S3/RDS synchronization, metadata/version state, S3 object versioning, browser SSH access, and systemd persistence after closing SSH.
 - **2026-09-03 — M6:** 113 tests passed; code/security verification PASS. AWS infrastructure provisioned through EC2 IAM-role attachment.

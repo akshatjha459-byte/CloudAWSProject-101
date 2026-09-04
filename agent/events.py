@@ -65,6 +65,7 @@ class SyncEvent:
     size: Optional[int]
     timestamp: str
     dest_path: Optional[str] = field(default=None)
+    base_hash: Optional[str] = field(default=None)
 
     def __post_init__(self) -> None:
         if self.operation not in VALID_OPERATIONS:
@@ -81,6 +82,8 @@ class SyncEvent:
         # Remove dest_path from non-MOVED events to keep the payload clean.
         if self.operation != OP_MOVED:
             d.pop("dest_path", None)
+        if not d.get("base_hash"):
+            d.pop("base_hash", None)
         return d
 
     def to_json(self, indent: int | None = None) -> str:
@@ -110,6 +113,7 @@ def make_event(
     size: Optional[int] = None,
     timestamp: Optional[str] = None,
     dest_path: Optional[str] = None,
+    base_hash: Optional[str] = None,
 ) -> SyncEvent:
     """Construct a ``SyncEvent`` with sensible defaults.
 
@@ -131,4 +135,5 @@ def make_event(
         size=size,
         timestamp=timestamp or _utc_now(),
         dest_path=_portable_path(dest_path) if dest_path is not None else None,
+        base_hash=base_hash,
     )

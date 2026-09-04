@@ -284,6 +284,14 @@ Files use SHA-256 for content comparison and integrity checks. The agent maintai
 
 The state file must never contain AWS credentials.
 
+### 8.1 VERSIONING AND CONFLICT HANDLING (MODULE 8)
+
+Module 8 implements object versioning, recoverable history, and deterministic conflict handling:
+- **Versioning Strategy:** Files modified sequentially advance `current_version`, append to `FILE_VERSIONS`, and capture S3 `VersionId`. Historical versions are recoverable via `GET /files/{id}/content?version={n}`.
+- **3-Way Conflict Detection:** Divergence is detected deterministically when `local_hash != cloud_hash AND base_hash != cloud_hash AND base_hash != local_hash`.
+- **Zero Silent Overwrite:** Canonical files retain cloud content with `status = 'conflict'`. The conflicting local version is preserved under `{stem}.conflict-{hash[:12]}{ext}` in S3 and RDS, logged in `SYNC_LOGS`, and published in `SYNC_CHANGES`.
+- **Loop Prevention:** Conflict copies and incoming changes update `SyncState` to prevent endless synchronization ping-pong loops.
+
 ---
 
 ## 9. SECURITY MODEL

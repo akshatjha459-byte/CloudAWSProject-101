@@ -103,11 +103,15 @@ class HttpEventSender(EventSender):
         self._http_post = http_post or default_http_post
         self.last_status: Optional[int] = None
         self.last_error: Optional[str] = None
+        self.last_conflict_path: Optional[str] = None
+        self.last_cloud_hash: Optional[str] = None
 
     def send(self, event: SyncEvent) -> None:
         """Dispatch *event*.  HTTP failures are recorded and logged, not raised."""
         self.last_status = None
         self.last_error = None
+        self.last_conflict_path = None
+        self.last_cloud_hash = None
         try:
             if event.operation == OP_DELETED:
                 status, body = self._send_delete(event)
@@ -130,6 +134,7 @@ class HttpEventSender(EventSender):
                     event.path,
                     status,
                 )
+                self._handle_upload_success(event, body)
         except URLError as exc:
             self.last_error = str(exc.reason if getattr(exc, "reason", None) else exc)
             logger.error("Network error sending %s for %s: %s", event.operation, event.path, self.last_error)
@@ -161,6 +166,7 @@ class HttpEventSender(EventSender):
             "hash": event.hash,
             "size": None if event.size is None else str(event.size),
             "dest_path": event.dest_path,
+            "base_hash": event.base_hash,
         }
         file_bytes: Optional[bytes] = None
         filename = os.path.basename(event.path) or "file"
@@ -193,6 +199,37 @@ class HttpEventSender(EventSender):
             logger.warning("Local file missing for upload: %s", local)
             return None
         return local.read_bytes()
+
+    def _handle_upload_success(self, event: SyncEvent, body: bytes) -> None:
+        if event.operation not in (OP_CREATED, OP_MODIFIED):
+            return
+        try:
+            payload = json.loads(body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return
+        if not payload.get("conflict"):
+            return
+        conflict_path = payload.get("conflict_path")
+        file_info = payload.get("file") or {}
+        file_id = file_info.get("id")
+        self.last_conflict_path = conflict_path
+        self.last_cloud_hash = file_info.get("current_hash")
+        from agent.conflict import copy_local_to_conflict
+        from agent.state import SyncState
+
+        local_hash = event.hash or ""
+        copy_local_to_conflict(self.sync_folder, event.path, local_hash)
+        if file_id is not None:
+            content = self.download_file(file_id)
+            if content is not None:
+                local = Path(self.sync_folder) / event.path.replace("/", os.sep)
+                local.parent.mkdir(parents=True, exist_ok=True)
+                local.write_bytes(content)
+        state = SyncState(self.sync_folder)
+        if self.last_cloud_hash:
+            state.update_file_state(event.path, self.last_cloud_hash, deleted=False)
+        if conflict_path:
+            state.update_file_state(conflict_path, event.hash, deleted=False)
 
     def get_changes(self, since: Optional[str] = None) -> list[dict]:
         url = f"{self.backend_url}/sync/changes"

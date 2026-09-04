@@ -61,6 +61,15 @@ class MetadataRepository(abc.ABC):
         ...
 
     @abc.abstractmethod
+    def set_file_status(
+        self,
+        file_id: int,
+        status: str,
+        timestamp: Optional[str] = None,
+    ) -> FileRecord:
+        ...
+
+    @abc.abstractmethod
     def add_version(
         self,
         file_id: int,
@@ -219,6 +228,18 @@ class MemoryMetadataRepository(MetadataRepository):
         self._files[file_id] = updated
         return updated
 
+    def set_file_status(
+        self,
+        file_id: int,
+        status: str,
+        timestamp: Optional[str] = None,
+    ) -> FileRecord:
+        record = self._files[file_id]
+        now = timestamp or _utc_now()
+        updated = record.model_copy(update={"status": status, "updated_at": now})
+        self._files[file_id] = updated
+        return updated
+
     def add_version(
         self,
         file_id: int,
@@ -244,6 +265,7 @@ class MemoryMetadataRepository(MetadataRepository):
             source=source,
             storage_version_id=storage_version_id,
             created_at=now,
+            is_conflict=operation == "CONFLICT",
         )
         self._versions.append(version)
         self._files[file_id] = file_record.model_copy(

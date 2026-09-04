@@ -23,6 +23,7 @@ from backend.models import (
     VALID_UPLOAD_OPERATIONS,
     VersionRecord,
 )
+from backend.services.conflict import conflict_relative_path, is_conflict_copy_path
 
 
 class SyncValidationError(ValueError):
@@ -65,6 +66,7 @@ class SyncService:
         size: Optional[int] = None,
         dest_path: Optional[str] = None,
         content: Optional[bytes] = None,
+        base_hash: Optional[str] = None,
     ) -> UploadResult:
         operation = operation.upper()
         if operation not in VALID_UPLOAD_OPERATIONS:
@@ -122,6 +124,23 @@ class SyncService:
                 idempotent=True,
             )
 
+        if (
+            existing is not None
+            and not existing.deleted
+            and existing.current_hash
+            and existing.current_hash != actual_hash
+            and not is_conflict_copy_path(path)
+            and self._is_divergent_conflict(existing.current_hash, actual_hash, base_hash)
+        ):
+            return self._preserve_conflict(
+                existing=existing,
+                local_content=content,
+                local_hash=actual_hash,
+                local_size=actual_size,
+                timestamp=timestamp,
+                operation=operation,
+            )
+
         put = self._storage.put(path, content)
         file_record = self._repo.upsert_file(
             path,
@@ -162,6 +181,132 @@ class SyncService:
             message="synchronized",
             file=file_record,
             version=version,
+        )
+
+    @staticmethod
+    def _is_divergent_conflict(
+        cloud_hash: str,
+        local_hash: str,
+        base_hash: Optional[str],
+    ) -> bool:
+        """True when local and cloud both moved away from a shared base hash."""
+        if not base_hash:
+            return False
+        return (
+            local_hash != cloud_hash
+            and base_hash != cloud_hash
+            and base_hash != local_hash
+        )
+
+    def _preserve_conflict(
+        self,
+        *,
+        existing,
+        local_content: bytes,
+        local_hash: str,
+        local_size: int,
+        timestamp: str,
+        operation: str,
+    ) -> UploadResult:
+        conflict_path = conflict_relative_path(existing.relative_path, local_hash)
+        conflict_file = self._repo.get_file_by_path(conflict_path)
+        if (
+            conflict_file is not None
+            and not conflict_file.deleted
+            and conflict_file.current_hash == local_hash
+        ):
+            original = self._repo.set_file_status(
+                existing.id, "conflict", timestamp=timestamp
+            )
+            versions = self._repo.list_versions(conflict_file.id)
+            latest = versions[-1] if versions else self._repo.add_version(
+                conflict_file.id,
+                operation="CONFLICT",
+                file_hash=local_hash,
+                size=local_size,
+                storage_version_id=conflict_file.storage_version_id,
+                timestamp=timestamp,
+                source="local",
+            )
+            self._repo.add_log(
+                path=existing.relative_path,
+                operation="CONFLICT",
+                status="SUCCESS",
+                file_id=existing.id,
+                timestamp=timestamp,
+                error_message=(
+                    f"idempotent conflict; local preserved at {conflict_path}; "
+                    f"cloud_hash={existing.current_hash}; local_hash={local_hash}"
+                ),
+            )
+            return UploadResult(
+                message="conflict preserved (idempotent)",
+                file=original,
+                version=latest,
+                idempotent=True,
+                conflict=True,
+                conflict_path=conflict_path,
+            )
+
+        put = self._storage.put(conflict_path, local_content)
+        conflict_file = self._repo.upsert_file(
+            conflict_path,
+            file_hash=local_hash,
+            size=local_size,
+            storage_key=put.key,
+            storage_version_id=put.version_id,
+            deleted=False,
+            timestamp=timestamp,
+        )
+        version = self._repo.add_version(
+            conflict_file.id,
+            operation="CONFLICT",
+            file_hash=local_hash,
+            size=local_size,
+            storage_version_id=put.version_id,
+            timestamp=timestamp,
+            source="local",
+        )
+        conflict_file = self._repo.get_file_by_id(conflict_file.id)
+        assert conflict_file is not None
+        original = self._repo.set_file_status(
+            existing.id, "conflict", timestamp=timestamp
+        )
+        detail = (
+            f"local preserved at {conflict_path}; "
+            f"cloud_hash={existing.current_hash}; local_hash={local_hash}; "
+            f"operation={operation}"
+        )
+        self._repo.add_log(
+            path=existing.relative_path,
+            operation="CONFLICT",
+            status="SUCCESS",
+            file_id=existing.id,
+            timestamp=timestamp,
+            error_message=detail,
+        )
+        self._repo.add_log(
+            path=conflict_path,
+            operation="CONFLICT",
+            status="SUCCESS",
+            file_id=conflict_file.id,
+            timestamp=timestamp,
+            error_message=detail,
+        )
+        self._repo.add_change(
+            path=conflict_path,
+            operation="CREATED",
+            file_id=conflict_file.id,
+            file_hash=local_hash,
+            size=local_size,
+            timestamp=timestamp,
+        )
+        return UploadResult(
+            message="conflict preserved",
+            file=original,
+            version=version,
+            conflict=True,
+            conflict_path=conflict_path,
         )
 
     def _handle_move(
@@ -295,14 +440,28 @@ class SyncService:
     def list_files(self) -> list[FileRecord]:
         return self._repo.list_files()
 
-    def download(self, file_id: int) -> bytes:
+    def download(self, file_id: int, version_number: Optional[int] = None) -> bytes:
         file_record = self._repo.get_file_by_id(file_id)
         if file_record is None:
             raise SyncNotFoundError(f"file {file_id} not found")
-        if file_record.deleted:
+        if file_record.deleted and version_number is None:
             raise SyncNotFoundError(f"file {file_id} is deleted")
-        
-        content = self._storage.get(file_record.storage_key)
+
+        storage_version_id = None
+        if version_number is not None:
+            versions = self._repo.list_versions(file_id)
+            match = next((v for v in versions if v.version_number == version_number), None)
+            if match is None:
+                raise SyncNotFoundError(
+                    f"version {version_number} not found for file {file_id}"
+                )
+            storage_version_id = match.storage_version_id
+
+        content = self._storage.get(file_record.storage_key, storage_version_id)
+        if content is None and storage_version_id:
+            content = self._storage.get(file_record.relative_path, storage_version_id)
+        if content is None and version_number is None:
+            content = self._storage.get(file_record.relative_path)
         if content is None:
             raise SyncNotFoundError(f"file content for {file_id} not found in storage")
         return content
@@ -325,6 +484,12 @@ class SyncService:
             last = logs[-1].timestamp
         elif changes:
             last = changes[-1].timestamp
+        conflict_count = sum(
+            1
+            for f in files
+            if not f.deleted
+            and (f.status == "conflict" or is_conflict_copy_path(f.relative_path))
+        )
         return StatusResponse(
             status="ok",
             storage_adapter=self._storage_adapter_name,
@@ -333,6 +498,7 @@ class SyncService:
             deleted_count=sum(1 for f in files if f.deleted),
             log_count=len(logs),
             change_count=len(changes),
+            conflict_count=conflict_count,
             last_operation_at=last,
             notes={
                 "s3": "active" if self._storage_adapter_name == "s3" else "not selected",

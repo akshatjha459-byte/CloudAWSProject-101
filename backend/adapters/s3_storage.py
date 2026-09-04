@@ -86,10 +86,13 @@ class S3FileStorage(FileStorage):
         version_id = response.get("VersionId") or ""
         return StoragePutResult(key=s3_key, version_id=str(version_id), size=len(content))
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str, version_id: Optional[str] = None) -> Optional[bytes]:
         s3_key = self._key(key)
+        kwargs: dict = {"Bucket": self.bucket, "Key": s3_key}
+        if version_id:
+            kwargs["VersionId"] = str(version_id)
         try:
-            response = self._client.get_object(Bucket=self.bucket, Key=s3_key)
+            response = self._client.get_object(**kwargs)
             body = response["Body"]
             return body.read() if hasattr(body, "read") else bytes(body)
         except ClientError as exc:

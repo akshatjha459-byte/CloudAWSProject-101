@@ -75,10 +75,18 @@ class FakeS3Client:
             return None
         return versions[-1]
 
-    def get_object(self, Bucket: str, Key: str) -> dict:
+    def get_object(self, Bucket: str, Key: str, VersionId: Optional[str] = None) -> dict:
         if self.fail_get_unexpected:
             raise _client_error("SlowDown", http=503, operation="GetObject")
-        current = self._current(Key)
+        versions = self.objects.get(Key) or []
+        current = None
+        if VersionId:
+            for item in versions:
+                if item["version_id"] == VersionId:
+                    current = item
+                    break
+        else:
+            current = self._current(Key)
         if current is None or current["delete_marker"]:
             raise _client_error("NoSuchKey", operation="GetObject")
         return {

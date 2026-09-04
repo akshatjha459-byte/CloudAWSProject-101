@@ -93,22 +93,29 @@ For cloud-to-local synchronization, M2 periodically asks M3 for changes since it
 Local synchronization state must track enough information to prevent repeated processing.
 
 ### M8: Versioning and Conflict Contract
-M8 uses hashes and version information to detect content changes and conflicts.
+M8 extends the framework with object versioning, recoverable history, and deterministic conflict detection and preservation.
 
-Normal modification:
-1. detect changed hash
-2. upload new content
-3. create a new S3 version
-4. create a FILE_VERSIONS record
-5. create a SYNC_LOG record
+Endpoints & Parameters:
+- `POST /sync/upload`: Supports optional `base_hash` form field representing the last known synced SHA-256 hash.
+- `GET /files/{file_id}/versions`: Returns `VersionsResponse` containing file ID, version count, and list of `VersionRecord` items (`id`, `file_id`, `version_number`, `hash`, `size`, `operation`, `source`, `storage_version_id`, `created_at`, `is_conflict`).
+- `GET /files/{file_id}/content?version={n}`: Downloads specific historical version content from storage.
+- `GET /status`: Reports `conflict_count` across all active files.
 
-Conflict:
-1. detect conflicting local/cloud versions
-2. do not silently overwrite data
-3. preserve existing versions where practical
-4. record the conflict in RDS
-5. create a conflict copy or clearly flag the conflict
-6. expose the conflict through status/log/dashboard interfaces
+Normal modification flow:
+1. Client computes SHA-256 hash and dispatches event with `base_hash`.
+2. Backend identifies existing file by path; if content matches, returns `idempotent=True`.
+3. New content stored in S3 via existing adapter; S3 `VersionId` captured.
+4. RDS updates `files.current_hash`, `files.size`, and increments `files.current_version`.
+5. `file_versions` record added with `version_number`, `operation='MODIFIED'`, `storage_version_id`.
+6. Success logged to `sync_logs` and published to `sync_changes`.
+
+Conflict handling (Zero Silent Overwrite):
+1. **Detection:** Deterministic 3-way check: `local_hash != cloud_hash AND base_hash != cloud_hash AND base_hash != local_hash`.
+2. **Preservation:** Canonical file remains intact with status updated to `'conflict'`.
+3. **Conflict Copy:** Conflicting local payload saved to S3 and registered in RDS at `{stem}.conflict-{local_hash[:12]}{ext}`.
+4. **Versioning:** Sibling file record created with version record (`operation='CONFLICT'`, `is_conflict=True`).
+5. **Logging:** Both original path and conflict copy path logged to `sync_logs` with `operation='CONFLICT'`.
+6. **Agent Poller:** Cloud poller checks for local divergence against `SyncState` before applying cloud changes, creating local conflict copies if needed.
 
 ### M9: Monitoring, Logging and Alerting Contract
 M9 operates around the backend/AWS layer.

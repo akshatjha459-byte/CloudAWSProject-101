@@ -82,6 +82,7 @@ class VersionRecord(BaseModel):
     source: str = "local"
     storage_version_id: Optional[str] = None
     created_at: str
+    is_conflict: bool = False
 
 
 class LogRecord(BaseModel):
@@ -115,6 +116,8 @@ class UploadResult(BaseModel):
     file: FileRecord
     version: VersionRecord
     idempotent: bool = False
+    conflict: bool = False
+    conflict_path: Optional[str] = None
 
 
 class DeleteResult(BaseModel):
@@ -131,6 +134,7 @@ class StatusResponse(BaseModel):
     deleted_count: int
     log_count: int
     change_count: int
+    conflict_count: int = 0
     last_operation_at: Optional[str] = None
     notes: dict[str, Any] = Field(default_factory=dict)
 

@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS files (
     current_hash VARCHAR(64),
     size INTEGER,
     status VARCHAR(32) NOT NULL DEFAULT 'synced',
+    -- M8 may set status to 'conflict' on the cloud-canonical file while a
+    -- sibling *.conflict-<hash>.* path stores the other side's bytes.
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
     created_at VARCHAR(32) NOT NULL,
     updated_at VARCHAR(32) NOT NULL,
@@ -28,6 +30,8 @@ CREATE TABLE IF NOT EXISTS file_versions (
     source VARCHAR(64) NOT NULL DEFAULT 'local',
     storage_version_id VARCHAR(256),
     created_at VARCHAR(32) NOT NULL
+    -- M8: conflict copies use operation='CONFLICT' and files.status='conflict'.
+    -- No extra table is required; previous versions remain in this table.
 );
 
 CREATE INDEX IF NOT EXISTS ix_file_versions_file_id ON file_versions (file_id);

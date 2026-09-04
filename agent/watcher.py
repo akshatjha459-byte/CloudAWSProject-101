@@ -103,6 +103,7 @@ class _SyncEventHandler(FileSystemEventHandler):
             return
 
         rel_src = _relative(src, self._sync_folder)
+        base_hash = None
 
         if operation in (OP_CREATED, OP_MODIFIED):
             file_hash, size = self._hash_and_size(src)
@@ -113,6 +114,7 @@ class _SyncEventHandler(FileSystemEventHandler):
             if known_hash and known_hash == file_hash:
                 logger.debug("Ignoring %s %s (hash %s matches known state)", operation, rel_src, file_hash)
                 return
+            base_hash = known_hash
         else:
             file_hash, size = None, None
 
@@ -129,6 +131,7 @@ class _SyncEventHandler(FileSystemEventHandler):
             hash=file_hash,
             size=size,
             dest_path=rel_dest,
+            base_hash=base_hash,
         )
         logger.info("Dispatching: %s", event.to_json())
         try:
@@ -136,7 +139,12 @@ class _SyncEventHandler(FileSystemEventHandler):
             # Update state after successful send
             from agent.state import SyncState
             state = SyncState(self._sync_folder)
-            if operation == OP_DELETED:
+            conflict_path = getattr(self._sender, "last_conflict_path", None)
+            if conflict_path:
+                cloud_hash = getattr(self._sender, "last_cloud_hash", None)
+                state.update_file_state(rel_src, cloud_hash, deleted=False)
+                state.update_file_state(conflict_path, file_hash, deleted=False)
+            elif operation == OP_DELETED:
                 state.update_file_state(rel_src, None, deleted=True)
             elif operation == OP_MOVED and rel_dest:
                 state.update_file_state(rel_src, None, deleted=True)

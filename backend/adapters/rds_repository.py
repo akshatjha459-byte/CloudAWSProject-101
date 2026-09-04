@@ -75,6 +75,7 @@ def _to_version(row: VersionRow) -> VersionRecord:
         source=row.source,
         storage_version_id=row.storage_version_id,
         created_at=row.created_at,
+        is_conflict=row.operation == "CONFLICT",
     )
 
 
@@ -241,6 +242,22 @@ class RdsMetadataRepository(MetadataRepository):
                 raise KeyError(f"file {file_id} not found")
             row.deleted = True
             row.status = "deleted"
+            row.updated_at = now
+            session.flush()
+            return _to_file(row)
+
+    def set_file_status(
+        self,
+        file_id: int,
+        status: str,
+        timestamp: Optional[str] = None,
+    ) -> FileRecord:
+        now = timestamp or _utc_now()
+        with self._session() as session:
+            row = session.get(FileRow, file_id)
+            if row is None:
+                raise KeyError(f"file {file_id} not found")
+            row.status = status
             row.updated_at = now
             session.flush()
             return _to_file(row)
