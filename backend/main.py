@@ -15,6 +15,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from backend.adapters.repository import MemoryMetadataRepository, MetadataRepository
 from backend.adapters.storage import FileStorage, MemoryFileStorage
@@ -106,6 +108,11 @@ def create_app(
     app.state.sync_service = service
     app.state.observability = observability
     app.include_router(router)
+    app.mount(
+        "/dashboard",
+        StaticFiles(directory=str(Path(__file__).resolve().parent.parent / "dashboard"), html=True),
+        name="dashboard",
+    )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hybrid Cloud Sync Dashboard</title>
+  <link rel="stylesheet" href="/dashboard/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Hybrid Cloud Sync Dashboard</h1>
+    <div class="auth-bar">
+      <input
+        id="api-key-input"
+        type="password"
+        placeholder="Enter API Key"
+        autocomplete="off"
+      />
+      <button id="save-key-btn">Connect</button>
+      <span id="auth-status" class="auth-status"></span>
+    </div>
+  </header>
+
+  <main id="main-content" class="hidden">
+    <section class="cards">
+      <div class="card" id="card-health">
+        <div class="card-label">Health</div>
+        <div class="card-value" id="health-status">--</div>
+      </div>
+      <div class="card" id="card-files">
+        <div class="card-label">Files</div>
+        <div class="card-value" id="file-count">--</div>
+      </div>
+      <div class="card" id="card-deleted">
+        <div class="card-label">Deleted</div>
+        <div class="card-value" id="deleted-count">--</div>
+      </div>
+      <div class="card" id="card-conflicts">
+        <div class="card-label">Conflicts</div>
+        <div class="card-value" id="conflict-count">--</div>
+      </div>
+      <div class="card" id="card-logs">
+        <div class="card-label">Logs</div>
+        <div class="card-value" id="log-count">--</div>
+      </div>
+      <div class="card" id="card-changes">
+        <div class="card-label">Changes</div>
+        <div class="card-value" id="change-count">--</div>
+      </div>
+      <div class="card" id="card-last-sync">
+        <div class="card-label">Last Operation</div>
+        <div class="card-value" id="last-operation">--</div>
+      </div>
+      <div class="card" id="card-adapters">
+        <div class="card-label">Adapters</div>
+        <div class="card-value" id="adapter-status">--</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Files</h2>
+        <button id="refresh-files-btn" class="btn-secondary">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table id="files-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Filename</th>
+              <th>Path</th>
+              <th>Version</th>
+              <th>Status</th>
+              <th>Size</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Recent Sync Logs</h2>
+        <button id="refresh-logs-btn" class="btn-secondary">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table id="logs-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Path</th>
+              <th>Operation</th>
+              <th>Status</th>
+              <th>Error</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Recent Cloud Changes</h2>
+        <button id="refresh-changes-btn" class="btn-secondary">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table id="changes-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Path</th>
+              <th>Operation</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div id="auth-banner" class="auth-banner hidden">
+    <strong>Authentication required</strong>
+    <span>Enter the API key to view dashboard data.</span>
+  </div>
+
+  <div id="error-banner" class="error-banner hidden"></div>
+
+  <dialog id="versions-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Version History</h3>
+        <button id="modal-close" class="btn-close">&times;</button>
+      </div>
+      <div class="table-wrap">
+        <table id="versions-table">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Operation</th>
+              <th>Hash</th>
+              <th>Size</th>
+              <th>Created</th>
+              <th>Conflict</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/dashboard/app.js"></script>
+</body>
+</html>
