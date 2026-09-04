@@ -8,18 +8,20 @@ This file records the project's implementation and verification state.
 - `docs/module-contracts.md` — interfaces and dependencies.
 - `docs/PROGRESS.md` — what has actually been implemented and verified.
 - `modules/module-XX/README.md` — module-specific implementation and verification notes.
+- `docs/AWS-Explainer-M6.md` — practical M6 AWS deployment/rebuild reference.
+- `docs/AWS-Explainer-M9.md` — practical M9 AWS monitoring/alerting deployment and verification reference.
 
 Update progress only after verification. Do not redesign architecture or silently change module contracts here.
 
 ## Overall Status
 
-**Current module:** M8 — Versioning & Conflict Handling
+**Current module:** M9 — Monitoring, Logging & Alerting
 
-**Overall phase:** M8 COMPLETE — ready to begin Module 9
+**Overall phase:** M9 COMPLETE — ready to begin Module 10
 
-**Last verified:** M6 AWS infrastructure, EC2 deployment, IAM/security controls, application authentication, RDS connectivity/schema, local Agent -> EC2 -> S3/RDS end-to-end synchronization, browser EC2 Instance Connect access, and persistent FastAPI service configuration.
+**Last verified:** M9 application deployment on EC2, production monitoring configuration, CloudWatch custom metrics, SNS repeated-sync-failure alerting, live M9 synchronization, plus all prior M1-M8 functionality.
 
-**Next action:** Implement and verify Module 9: Monitoring, Logging & Alerting.
+**Next action:** Implement and verify Module 10: Frontend Dashboard.
 
 ## Canonical Module Sequence
 
@@ -33,7 +35,7 @@ Update progress only after verification. Do not redesign architecture or silentl
 | M6 | AWS IAM / Security | **COMPLETE** |
 | M7 | Bidirectional Synchronization | **COMPLETE** |
 | M8 | Versioning & Conflict Handling | **COMPLETE** |
-| M9 | Monitoring, Logging & Alerting | **NOT STARTED** |
+| M9 | Monitoring, Logging & Alerting | **COMPLETE** |
 | M10 | Frontend Dashboard | **NOT STARTED** |
 
 **Important:** There is no separate deployment M7. AWS deployment and verification are part of M6. M7 is **Bidirectional Synchronization**.
@@ -87,9 +89,35 @@ Update progress only after verification. Do not redesign architecture or silentl
 
 - Port 8000 is currently open for the project API/demo access.
 - Port 22 was temporarily opened to `0.0.0.0/0` to support SSH from changing networks and verify EC2 Instance Connect. For normal operation, SSH should preferably be restricted to the current administrator IP when practical.
-- Runtime passwords and API keys are intentionally not recorded in this progress file or `docs/AWSexplainer.md`.
+- Runtime passwords and API keys are intentionally not recorded in this progress file or AWS explainer documents.
 
 ## Completed Modules
+
+### M9 — Monitoring, Logging & Alerting
+
+**Status:** COMPLETE
+
+**Responsibility:** Add structured application observability, CloudWatch metrics, SNS failure/security alerting, and least-privilege AWS permissions without making monitoring a synchronization dependency.
+
+**What was implemented and verified:**
+- Added `backend/services/observability.py` with `StructuredLogger`, `CloudWatchMetrics`, `SnsAlerter`, and the `Observability` facade.
+- Structured events cover file operations, synchronization success/failure, conflicts, authentication failures and application errors.
+- Configured secret redaction for API keys, passwords, credential-like fields, authorization values, tokens, database URLs and URL userinfo.
+- Preserved RDS `sync_logs` as the durable application audit trail; monitoring failures do not fail file synchronization.
+- Added CloudWatch metrics: `SyncOperations`, `SyncSuccess`, `SyncFailure`, `ConflictEvents`, `ApplicationErrors`, and `AuthFailures` under namespace `CloudAWSProject/Sync`.
+- Added SNS alerting for repeated sync failures (default threshold 3), repeated authentication failures (default threshold 5), critical application errors and security failures, with anti-spam streak handling.
+- Added production M9 configuration to `.env.example` and the EC2 runtime `.env` without committing runtime secrets.
+- Added `infrastructure/iam_policies/ec2_monitoring_policy.json` with least-privilege CloudWatch `PutMetricData` and SNS `Publish` permissions.
+- Created the real AWS SNS Standard topic `CloudAWSProject-Alerts`, confirmed its email subscription, and verified direct EC2-role SNS publishing.
+- Discovered that EC2 was still on pre-M9 commit `e3e9a0b` while GitHub `origin/main` had M9 commit `160ae43`; fixed the deployment by pulling `origin/main` rather than assuming `git fetch` updated the working tree.
+- Updated the EC2 `cloudaws-backend.service` with `EnvironmentFile=/home/ec2-user/CloudAWSProject-101/.env`, reloaded systemd, restarted the service, and verified the live process loaded the M9 environment.
+- Verified the M9 backend on EC2 remained `active (running)` after restart and successfully processed a live `m9-test-2.txt` upload.
+- Verified the CloudWatch custom namespace `CloudAWSProject/Sync` in the AWS console and observed `M9Metric`, `M9TestMetric`, and `SyncSuccess`.
+- Verified SNS end-to-end by generating three controlled `CREATED` upload failures without file content; the third consecutive failure triggered the configured repeated-sync-failure email alert.
+- Direct structured logger invocation on EC2 successfully emitted JSON through `backend.observability`. Normal systemd journal output primarily showed Uvicorn logs; this was not treated as a synchronization failure because logging is intentionally auxiliary/non-blocking.
+- Focused M9 suite: **14 passed**, 1 warning.
+- Full project regression after M9: **154 passed, 2 skipped, 1 warning**.
+- CloudWatch alarms were not created because the current M9 design uses application-level SNS threshold alerting directly. CloudTrail remains an AWS-account audit feature and was not independently re-verified during M9.
 
 ### M8 — Versioning & Conflict Handling
 
@@ -107,7 +135,7 @@ Update progress only after verification. Do not redesign architecture or silentl
 - Added `CloudPoller` local divergence detection in `agent/poller.py` to create conflict copies before overwriting local files during cloud updates.
 - Ensured full idempotency: retried uploads and retried conflicts do not create duplicate files or version records.
 - Added 17 unit/integration tests in `modules/module-08/tests/test_m8.py` covering all 14 required verification areas.
-- Full project test suite passes: 140 passed, 2 skipped, 1 warning.
+- Full project test suite before M9: 140 passed, 2 skipped, 1 warning.
 
 ### M7 — Bidirectional Synchronization
 
@@ -165,20 +193,13 @@ Established the portable `organization/files/` source directory, environment con
 
 ## Future Handoffs
 
-### M7 — Bidirectional Synchronization
-
-Begins after M6 AWS deployment/verification. M7 will implement cloud-to-local synchronization while preserving the existing local-to-cloud path and M1-M6 contracts.
-
-### M9 — Monitoring, Logging & Alerting
-
-Will add CloudWatch monitoring/logging, CloudTrail audit verification and SNS failure/security notification.
-
 ### M10 — Frontend Dashboard
 
 Will expose system state through the M3 REST API. The dashboard must not connect directly to RDS.
 
 ## Verification History
 
+- **2026-09-04 — M9:** M9 deployed to EC2 at commit `160ae43`; production CloudWatch/SNS configuration loaded through systemd; CloudWatch namespace `CloudAWSProject/Sync` and `SyncSuccess` verified in the AWS console; live M9 upload succeeded; three controlled sync failures triggered the configured repeated-sync-failure SNS email; focused M9 suite 14 passed; full project regression 154 passed, 2 skipped, 1 warning.
 - **2026-09-04 — M8:** 140 tests passed, 2 skipped, 1 warning (17 new M8 tests covering all 14 required verification areas). Versioning, recoverable history, version history API, 3-way conflict detection, non-destructive conflict preservation, conflict copying, and loop prevention verified.
 - **2026-09-04 — M7:** 123 tests passed; true bidirectional synchronization hardened. Cloud checkpointing redesigned to prevent skipping failed changes or dropping identical timestamps. MOVED operation handling fortified against partial failures.
 - **2026-09-04 — M6:** Real AWS deployment, end-to-end verification, browser EC2 Instance Connect access, and persistent FastAPI service PASS. Verified EC2 IAM-role S3 access, FastAPI deployment, EC2-to-RDS connectivity, RDS schema creation, production API-key authentication (401/200), local Agent -> EC2 -> S3/RDS synchronization, metadata/version state, S3 object versioning, browser SSH access, and systemd persistence after closing SSH.
