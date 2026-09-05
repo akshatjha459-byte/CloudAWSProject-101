@@ -5,6 +5,107 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hybrid Cloud Sync Dashboard</title>
   <link rel="stylesheet" href="/dashboard/styles.css" />
+  <style>
+    .welcome {
+      max-width: 1280px;
+      margin: 24px auto 0;
+      padding: 0 20px;
+    }
+
+    .welcome-card {
+      position: relative;
+      overflow: hidden;
+      padding: 30px 32px;
+      border-radius: 14px;
+      color: #f8fafc;
+      background: linear-gradient(135deg, #172554 0%, #1e3a8a 48%, #4c1d95 100%);
+      box-shadow: 0 10px 25px rgba(30, 64, 175, 0.18);
+    }
+
+    .welcome-card::after {
+      content: "";
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      right: -70px;
+      top: -100px;
+      border-radius: 50%;
+      background: rgba(125, 211, 252, 0.16);
+    }
+
+    .welcome-eyebrow {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #93c5fd;
+    }
+
+    .welcome-card h2 {
+      position: relative;
+      z-index: 1;
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .welcome-card p {
+      position: relative;
+      z-index: 1;
+      max-width: 720px;
+      margin: 0;
+      color: #dbeafe;
+      font-size: 14px;
+    }
+
+    .welcome-tags {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .welcome-tag {
+      padding: 5px 10px;
+      border: 1px solid rgba(191, 219, 254, 0.28);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.09);
+      color: #eff6ff;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .welcome-note {
+      max-width: 1280px;
+      margin: 10px auto 0;
+      padding: 0 20px;
+      color: #64748b;
+      font-size: 12px;
+    }
+
+    @media (max-width: 640px) {
+      .welcome {
+        margin-top: 14px;
+        padding: 0 14px;
+      }
+
+      .welcome-card {
+        padding: 24px 20px;
+      }
+
+      .welcome-card h2 {
+        font-size: 23px;
+      }
+
+      .welcome-note {
+        padding: 0 14px;
+      }
+    }
+  </style>
 </head>
 <body>
   <header class="app-header">
@@ -20,6 +121,21 @@
       <span id="auth-status" class="auth-status"></span>
     </div>
   </header>
+
+  <section class="welcome">
+    <div class="welcome-card">
+      <p class="welcome-eyebrow">CloudBridge Sync</p>
+      <h2>Welcome to your cloud control center.</h2>
+      <p>Monitor hybrid-cloud file synchronization, inspect storage activity, review sync history, and track system health from one place.</p>
+      <div class="welcome-tags">
+        <span class="welcome-tag">AWS S3</span>
+        <span class="welcome-tag">Amazon RDS</span>
+        <span class="welcome-tag">Real-time Sync</span>
+        <span class="welcome-tag">Observability</span>
+      </div>
+    </div>
+  </section>
+  <div class="welcome-note">Enter your API key above to connect and load live dashboard data.</div>
 
   <main id="main-content" class="hidden">
     <section class="cards">
